@@ -1,8 +1,9 @@
 # Project Artificial Intelligence
-Obbiettivo:
+# Obbiettivo:
+
 Generare, a partire da una mistura di PDF, nuovi dati artificiali casuali i quali forniscono
 output coerenti ai risultati di l’MLP addestrata su un set di dati supervisionati.
-Passaggi chiave:
+# Passaggi chiave:
 - La prima cosa da fare è prendere un dataset di regressione da UCI o
 altro repository, monodimensionale o riducibile a 1-dim tramite
 dimensionality reduction.
