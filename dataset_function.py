@@ -10,9 +10,9 @@ def dataset_reduction(dataframe, colonna_input, colonna_target):
 
 
 
-def create_file_csv(dataframe):
-    #Salvo il mio dataframe in un nuovo file .csv
-    dataframe.to_csv('C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced.csv', index=False)
+def create_file_csv(dataframe, filename):
+    # Salvo il mio dataframe in un nuovo file .csv
+    dataframe.to_csv(filename, index=False)
 
 
 def check_dataset_format(dataframe):

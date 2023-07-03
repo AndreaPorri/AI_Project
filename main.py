@@ -41,6 +41,9 @@ if __name__ == "__main__":
     dataset_reduced = check_dataset_format(dataset_reduced)
     #print('Il dataset con le eliminazioni è:\n ',dataset_reduced)
     #print('la dimensionalità è: ',dataset_reduced.shape)
+
+    #Salvo il dataset ridotto
+    create_file_csv(dataset_reduced,"C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced.csv")
     
     #Device configuration
     my_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,6 +70,8 @@ if __name__ == "__main__":
     data_X_val, _, _, _, _ = normalize_input_data(data_X_val, m, s)
     data_X_test, _, _, _, _ = normalize_input_data(data_X_test, m, s)
 
+    
+    
     #Stampe forma dati
     #print("DATI:\n",data_X_train)
     #print(f"MEDIA:{m}, STD:{s}, MAX:{max}, MIN:{min}")
@@ -84,8 +89,10 @@ if __name__ == "__main__":
     #Domanda: è normale che io abbia più numeri negativi post normalizzazione? In teoria questa dovrebbe mantenere la distribuzione relativa dei dati nel proprio intervallo.
     #        Oppure conviene fissare max = 100 e min = -100 e quindi viene una distribuzione sbilanciata ma che mantiene i segni? normalize_input_data_100
     '''
+    
+    
     #Ensure that we keep track of the mean and std used to normalize the data
-    torch.save([m, s], 'C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/normalizers.pth')
+    torch.save([m, s], 'C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/normalizers_hyperparam.pth')
 
     
  
