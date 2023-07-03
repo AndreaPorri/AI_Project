@@ -111,28 +111,18 @@ def create_splits_unbalanced(X, y, train_frac, valid_frac, randomize=True):
 
 
 
-def normalize_input_data(X, mean=None, std=None):
+def normalize_input_data(X, mean=None, std=None, min_val=None, max_val=None):
     #Calcolo della media e deviazione standard
     if mean is None:
             mean = X.mean()
     if std is None:
            std = X.std()
     # Adjust the range to -1 to 1
-    min_val = X.min()
-    max_val = X.max()
-    normalized_X = 2 * (X - min_val) / (max_val - min_val) - 1
-
-    return normalized_X, mean, std, max_val, min_val
-
-def normalize_input_data_100(X, mean=None, std=None):
-    #Calcolo della media e deviazione standard
-    if mean is None:
-            mean = X.mean()
-    if std is None:
-           std = X.std()
-    # Adjust the range to -1 to 1
-    min_val = -100
-    max_val = 100
+    if min_val is None:
+            min_val = X.min()
+    if max_val is None:
+            max_val = X.max()        
+    
     normalized_X = 2 * (X - min_val) / (max_val - min_val) - 1
 
     return normalized_X, mean, std, max_val, min_val
@@ -143,7 +133,7 @@ def normalize_output_data(y, min_val=None, max_val=None):
     if min_val is None:
         min_val = y.min()
     if max_val is None:
-        max_val = yù.max()
+        max_val = y.max()
     normalized_X = (y - min_val) / (max_val - min_val)
     return normalized_X
 

@@ -308,6 +308,12 @@ if __name__ == "__main__":
     #Ensure that we keep track of the mean and std used to normalize the data
     torch.save([m, s], 'C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/normalizers_hyperparam.pth')
 
+    #Normalizziamo pure gli output
+    data_y_train = normalize_output_data(data_y_train)
+    data_y_val = normalize_output_data(data_y_val)
+    data_y_test = normalize_output_data(data_y_test)
+
+
     
  
     
