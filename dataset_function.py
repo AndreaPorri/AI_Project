@@ -1,6 +1,15 @@
 import torch
+import pandas as pd
 import numpy as np
-from main import load_csv_file
+
+def check_dataset(dataframe):
+    #Numero righe e colonne dataset
+    print(dataframe.shape)
+    #Lista nomi colonne
+    lista_colonne= list(dataframe.columns)
+    print(f"Nomi delle colonne 1:{lista_colonne}\n")
+    #Stampa delle prime 10 righe dei dataset
+    print(f"Dataset first lines:\n{dataframe.head(10)}\n\n")  
 
 def dataset_reduction(dataframe, colonna_input, colonna_target):
     # Seleziona le colonne 13 e 14 dal dataframe
@@ -8,7 +17,9 @@ def dataset_reduction(dataframe, colonna_input, colonna_target):
     
     return dataframe_reduced
 
-
+def load_csv_file(filename):
+    dataframe = pd.read_csv(filename)
+    return dataframe
 
 def create_file_csv(dataframe, filename):
     # Salvo il mio dataframe in un nuovo file .csv
@@ -130,10 +141,10 @@ def normalize_input_data_100(X, mean=None, std=None):
 def normalize_output_data(y, min_val=None, max_val=None):
     #Calcolo del minimo e massimo
     if min_val is None:
-        min_val = X.min()
+        min_val = y.min()
     if max_val is None:
-        max_val = X.max()
-    normalized_X = (X - min_val) / (max_val - min_val)
+        max_val = yù.max()
+    normalized_X = (y - min_val) / (max_val - min_val)
     return normalized_X
 
 

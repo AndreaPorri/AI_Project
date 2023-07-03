@@ -2,22 +2,26 @@ import pandas as pd
 from dataset_function import *
 import torch
 import torch.nn as nn
+import torch.nn as nn
 
 
+class Net(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(Net, self).__init__()
+        self.layers = nn.ModuleList([nn.Linear(input_size, output_size)])
+
+    def add_hidden_layer(self, hidden_size):
+        self.layers.insert(-1, nn.Linear(self.layers[-1].out_features, hidden_size))
+        self.layers.insert(-1, nn.Tanh())
+
+    def forward(self, x):
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+            if i == len(self.layers) - 1 and not isinstance(layer, nn.Tanh):
+                x = torch.sigmoid(x)  # Applica sigmoid all'ultimo layer prima dell'output
+        return x
 
 
-def load_csv_file(filename):
-    dataframe = pd.read_csv(filename)
-    return dataframe
-
-def check_dataset(dataframe):
-    #Numero righe e colonne dataset
-    print(dataframe.shape)
-    #Lista nomi colonne
-    lista_colonne= list(dataframe.columns)
-    print(f"Nomi delle colonne 1:{lista_colonne}\n")
-    #Stampa delle prime 10 righe dei dataset
-    print(f"Dataset first lines:\n{dataframe.head(10)}\n\n")  
 
 
 if __name__ == "__main__":
