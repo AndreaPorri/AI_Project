@@ -3,6 +3,7 @@ from dataset_function import *
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 import matplotlib as plt
 
 
@@ -21,6 +22,13 @@ class Net(nn.Module):
             if i == len(self.layers) - 1 and not isinstance(layer, nn.Tanh):
                 x = torch.sigmoid(x)  # Applica sigmoid all'ultimo layer prima dell'output
         return x
+    
+    def initialize_weights(self):
+        for layer in self.layers:
+            if isinstance(layer, nn.Linear):
+                nn.init.normal_(layer.weight.data, 0.0, 0.02)
+                nn.init.constant_(layer.bias.data, 0.0) #erve a impostare i bias di ogni layer lineare nella rete a un valore costante di 0.
+
 
 
 class Net_training(torch.nn.Module):
@@ -167,7 +175,17 @@ class Net_training(torch.nn.Module):
                 return optim.RMSprop(parameters, lr=lr)
             else:
                 raise ValueError("Invalid choice of optimizer")
-            
+
+        #Unisco i tensori del input e output
+        train_dataset = TensorDataset(X_train, y_train)
+        val_dataset = TensorDataset(X_val, y_val)
+
+        #Dataloader
+        dataloader_train = torch.utils.data.DataLoader(train_dataset, batch_size=minibatch_size, shuffle=False,
+                                                 num_workers=2, drop_last=True)
+        dataloader_val = torch.utils.data.DataLoader(val_dataset, batch_size=minibatch_size, shuffle=False,
+                                                 num_workers=2, drop_last=True)
+        
         #Telling the network we are going to train it (and not to simply evaluate it)    
         net.train()
 
@@ -189,50 +207,53 @@ class Net_training(torch.nn.Module):
         
         ############## TRAINING LOOP ##############
         
-        for e in range(0, epochs):  # loop on epochs
+        for e in range(0, epochs): # loop on epochs
             #Azzero tutte le mie quantità
             loss_value = 0.
             r2_status = None
-            t = 0 # tiene traccia dell'indice dell'ultimo elemento del mini-batch corrente
-            nb = 0
+            nb = 0 #rappresenta l'indice del mini-batch corrente nel ciclo dei mini-batch
 
-            while True: #loop on mini-batches
-                #Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
-                optimizer.zero_grad()  
+            for X_minibatch, y_minibatch in dataloader_train:  # loop on mini-batches
+                # Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
+                optimizer.zero_grad()
 
-                f = t
-                t = min(f + minibatch_size, n_sample)
-                X_minibatch = X_train[f:t, :].to(device)
-                y_minibatch = y_train[f:t].to(device)
+                X_minibatch = X_minibatch.to(device)
+                y_minibatch = y_minibatch.to(device)
 
                 outputs = net(X_minibatch)  # going forward, "net" is a callable object
-                loss_value_on_minibatch = loss(outputs, y_minibatch)  # RMSE
+                loss_value_on_minibatch = loss(o=outputs, y=y_minibatch)  # RMSE
 
                 with torch.no_grad():
-                    r2_train_on_minibatch, r2_train, r2_status = Net_training.r2_score(outputs, y_minibatch, update_from=r2_status)
+                    r2_train_on_minibatch, r2_train, r2_status = Net_training.r2_score(outputs, y_minibatch,
+                                                                                    update_from=r2_status)
 
                     print("\tminibatch: {}, loss_train: {:.4f}, "
                         "r2_train: {:.2f}".format(nb + 1, loss_value_on_minibatch, r2_train_on_minibatch))
 
-                    loss_value += (loss_value_on_minibatch.item() ** 2) * (t - f)  # needed to estimate the train loss
+                    loss_value += (loss_value_on_minibatch.item() ** 2) * X_minibatch.size(0)  # needed to estimate the train loss
 
                 loss_value_on_minibatch.backward()  # going backward
                 optimizer.step()  # updating model parameters
 
                 nb += 1
-                if t == n:
+                if nb == len(dataloader_train):
                     break
 
             torch.save(net.state_dict(), 'net.pth')
 
-            r2_val, _ = Net_training.predict_and_r2_score(net, X_val, y_val, minibatch_size=minibatch_size)
-            found_best = False
-            if best_r2_val is None or r2_val > best_r2_val:
-                best_r2_val = r2_val
-                found_best = True
-                torch.save(net.state_dict(), 'net_best.pth')
+            for X_val_minibatch, y_val_minibatch in dataloader_val:
+                X_val_minibatch = X_val_minibatch.to(device)
+                y_val_minibatch = y_val_minibatch.to(device)
 
-            loss_value = np.sqrt(loss_value / n)
+                r2_val, _ = Net_training.predict_and_r2_score(net, X_val_minibatch, y_val_minibatch,
+                                                            minibatch_size=minibatch_size)
+                found_best = False
+                if best_r2_val is None or r2_val > best_r2_val:
+                    best_r2_val = r2_val
+                    found_best = True
+                    torch.save(net.state_dict(), 'net_best.pth')
+
+            loss_value = np.sqrt(loss_value / n_sample)
             print("epoch: {}, loss_train: {:.4f}, "
                 "r2_train: {:.2f}, r2_val: {:.2f}".format(e + 1, loss_value, r2_train, r2_val)
                 + (" (best)" if found_best else ""))
@@ -300,7 +321,7 @@ if __name__ == "__main__":
 
                         ### DEFINIZIONE DELLA MLP ###
 
-    #Carichiamo i dati dal nuovo file .csv e dividiamo in input e output
+    #Carichiamo i dati dal nuovo file .csv e dividiamo in input e target
     data_X, data_y = load_data_from_file("C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced.csv")
     
     #Splitting data in training, validation e test sets
@@ -342,14 +363,27 @@ if __name__ == "__main__":
     
     
     #Ensure that we keep track of the mean and std used to normalize the data
-    torch.save([m, s], 'C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/normalizers_hyperparam.pth')
+    torch.save([m, s, max, min], 'C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/normalizers_hyperparam.pth')
 
     #Normalizziamo pure gli output
     data_y_train = normalize_output_data(data_y_train)
     data_y_val = normalize_output_data(data_y_val)
     data_y_test = normalize_output_data(data_y_test)
 
+    ######## INIZIALIZZO LA RETE ###########
+    #Neuroni dei miei layer
+    input_size = 1
+    output_size = 1
+    hidden_layer1_size = 10
+    hidden_layer2_size = 4
 
+    #Creo l'architettura:
+    net = Net(input_size, output_size)
+    net.add_hidden_layer(hidden_layer1_size)
+    net.add_hidden_layer(hidden_layer2_size)
+    
+    #Inizializzo i pesi
+    net.initialize_weights()
     
  
     
