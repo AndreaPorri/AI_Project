@@ -2,6 +2,7 @@ import pandas as pd
 from dataset_function import *
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import matplotlib as plt
 
 
@@ -125,8 +126,10 @@ class Net_training(torch.nn.Module):
 
             return r2, torch.cat(outputs, dim=0)
 
-    def train(net, X_train, y_train, X_val, y_val, epochs=2000, lr=0.001, minibatch_size=32):
-        """Train a neural network for multiple epochs.
+    
+    def train(net, X_train, y_train, X_val, y_val, epochs=2000, lr=0.001, minibatch_size=32, loss_function_choise="rmse", optimizer_choice="adam"):
+        """
+        Train a neural network for multiple epochs.
 
         Args:
             net: the neural network.
@@ -141,31 +144,64 @@ class Net_training(torch.nn.Module):
         Returns:
             The two arrays with the R2s on training and validation data computed during the training epochs.
         """
+        #Function for multi-selection loss function
+        def loss_function(loss_function_choise, o, y):
+            if loss_function_choise == 'mse': #Mean Square Error
+                return torch.nn.functional.mse_loss(o, y, reduction='mean')
+            elif loss_function_choise == 'rmse':#Root Mean Squared Error: misura della radice quadrata dell'errore quadratico medio tra le previsioni del modello e target (migliore per regressioni).
+                return torch.sqrt(torch.nn.functional.mse_loss(o, y, reduction='mean'))
+            elif loss_function_choise == 'mae':#Mean Absolute Error:Misura la media delle differenze assolute tra le previsioni del modello e i valori di destinazione.
+                return torch.nn.functional.l1_loss(o, y, reduction='mean')
+            elif loss_function_choise == 'msle':
+                return torch.nn.functional.mse_loss(torch.log(o + 1), torch.log(y + 1), reduction='mean')
+            else:
+                raise ValueError("Invalid choice of loss function")
+            
+        #Function for multi-selection optimizer
+        def select_optimizer(optimizer_choice, parameters, lr):
+            if optimizer_choice == 'adam':
+                return optim.Adam(parameters, lr=lr)
+            elif optimizer_choice == 'sgd':
+                return optim.SGD(parameters, lr=lr)
+            elif optimizer_choice == 'rmsprop':
+                return optim.RMSprop(parameters, lr=lr)
+            else:
+                raise ValueError("Invalid choice of optimizer")
+            
+        #Telling the network we are going to train it (and not to simply evaluate it)    
+        net.train()
 
-        def rmse_loss(o, y):
-            return torch.sqrt(torch.nn.functional.mse_loss(o, y, reduction='mean'))
+        #Defining the loss function
+        loss = loss_function
 
-        net.train()  # telling the network we are going to train it (and not to simply evaluate it)
-        loss = rmse_loss  # defining the loss function
-        optimizer = torch.optim.Adam(net.parameters(), lr)  # defining the way we are going to update the net parameters
-        device = next(net.parameters()).device  # we assume that all the network parameters are on the same device
+        #Defining the way we are going to update the net parameters
+        optimizer = select_optimizer  
 
-        n = X_train.shape[0]
+        #We assume that all the network parameters are on the same device
+        device = next(net.parameters()).device 
+
+        #Definisco alcune quantità utili
+        n_sample = X_train.shape[0] #numero training sample
         best_r2_val = None
-        r2s_train = np.zeros(epochs)
-        r2s_val = np.zeros(epochs)
+        r2s_train = np.zeros(epochs)#Vettore di zeri dove salveremo r2s per ogni training epoch
+        r2s_val = np.zeros(epochs)#Vettore di zeri dove salveremo r2s per ogni validation epoch
 
+        
+        ############## TRAINING LOOP ##############
+        
         for e in range(0, epochs):  # loop on epochs
+            #Azzero tutte le mie quantità
             loss_value = 0.
             r2_status = None
-            t = 0
+            t = 0 # tiene traccia dell'indice dell'ultimo elemento del mini-batch corrente
             nb = 0
 
-            while True:  # loop on mini-batches
-                optimizer.zero_grad()  # clearing the previously computed gradients
+            while True: #loop on mini-batches
+                #Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
+                optimizer.zero_grad()  
 
                 f = t
-                t = min(f + minibatch_size, n)
+                t = min(f + minibatch_size, n_sample)
                 X_minibatch = X_train[f:t, :].to(device)
                 y_minibatch = y_train[f:t].to(device)
 
