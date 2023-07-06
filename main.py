@@ -5,29 +5,42 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import matplotlib as plt
+from tqdm import trange
+from time import sleep
+from torchsummary import summary
 
+def print_network_architecture(model):
+    print(model)
+    print("\n")
 
 class Net(nn.Module):
-    def __init__(self, input_size, output_size):
+    def __init__(self, input_size, output_size, hidden_sizes):
         super(Net, self).__init__()
-        self.layers = nn.ModuleList([nn.Linear(input_size, output_size)])
 
-    def add_hidden_layer(self, hidden_size):
-        self.layers.insert(-1, nn.Linear(self.layers[-1].out_features, hidden_size))
-        self.layers.insert(-1, nn.Tanh())
+        hidden_layers = []
+        prev_size = input_size
+        for hidden_size in hidden_sizes:
+            hidden_layers.append(nn.Linear(prev_size, hidden_size))
+            hidden_layers.append(nn.Tanh())
+            prev_size = hidden_size
+
+        self.layers = nn.Sequential(
+            *hidden_layers,
+            nn.Linear(prev_size, output_size),
+            nn.Sigmoid()
+        )
+
+        self.initialize_weights()
 
     def forward(self, x):
-        for i, layer in enumerate(self.layers):
-            x = layer(x)
-            if i == len(self.layers) - 1 and not isinstance(layer, nn.Tanh):
-                x = torch.sigmoid(x)  # Applica sigmoid all'ultimo layer prima dell'output
-        return x
-    
+        return self.layers(x)
+
     def initialize_weights(self):
         for layer in self.layers:
             if isinstance(layer, nn.Linear):
                 nn.init.normal_(layer.weight.data, 0.0, 0.02)
-                nn.init.constant_(layer.bias.data, 0.0) #erve a impostare i bias di ogni layer lineare nella rete a un valore costante di 0.
+                nn.init.constant_(layer.bias.data, 0.0)
+
 
 
 
@@ -133,9 +146,103 @@ class Net_training(torch.nn.Module):
                 net.train()
 
             return r2, torch.cat(outputs, dim=0)
-
     
-    def train(net, X_train, y_train, X_val, y_val, epochs=2000, lr=0.001, minibatch_size=32, loss_function_choise="rmse", optimizer_choice="adam"):
+    def prova(net, X_train, y_train, X_val, y_val, epochs=2000, lr=0.001, minibatch_size=32, loss_function_choice="rmse", optimizer_choice="adam"):
+        """
+        Train a neural network for multiple epochs.
+
+        Args:
+            net: the neural network.
+            X_train: training data (one-example-per-row).
+            y_train: training targets.
+            X_val: validation data (one-example-per-row).
+            y_val: validation targets.
+            epochs (optional): number of epochs.
+            lr (optional): learning rate.
+            minibatch_size (optional): size of the training mini-batches.
+            loss_function_choice (optional): choice of loss function.
+            optimizer_choice (optional): choice of optimizer.
+
+        Returns:
+            The two arrays with the R2s on training and validation data computed during the training epochs.
+        """
+
+        print("Training the network...")
+        sleep(2)
+        print('\n\n\tLoading the dataset and creating the dataloader...\n')
+
+        # Combine input and output tensors
+        train_dataset = TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
+        val_dataset = TensorDataset(torch.Tensor(X_val), torch.Tensor(y_val))
+
+        # Dataloader
+        dataloader_train = DataLoader(train_dataset, batch_size=minibatch_size, shuffle=False, drop_last=True)
+        dataloader_val = DataLoader(val_dataset, batch_size=minibatch_size, shuffle=False, drop_last=True)
+
+        # We assume that all the network parameters are on the same device
+        device = next(net.parameters()).device
+
+        # Print to verify that everything has been executed correctly, that the objects have been instantiated and the device is defined:
+        print(f'\t\tThe device selected for the training is: {device}')
+        print(f'\t\tTraining dataset object = {train_dataset}')
+        print(f'\t\tValidation dataset object = {val_dataset}')
+        print(f'\t\tTaining dataloader object = {dataloader_train}')
+        print(f'\t\tValidation dataloader object = {dataloader_val}')
+        print(f'\t\tNumber of datasets training and validation samples = {len(train_dataset), len(val_dataset)}')
+        sleep(4)
+
+        # LOSS FUNCTION SELECTION
+
+        print('\n\n\tLoading the selected loss function...')
+
+        # Function for multi-selection loss function
+        if loss_function_choice == 'mse':  # Mean Square Error
+            loss_function = nn.MSELoss()
+        elif loss_function_choice == 'rmse':  # Root Mean Squared Error
+            loss_function = nn.MSELoss()
+        elif loss_function_choice == 'mae':  # Mean Absolute Error
+            loss_function = nn.L1Loss()
+        else:
+            raise ValueError("Invalid choice of loss function")
+
+        sleep(2)
+
+        # OPTIMIZER SELECTION AND APPLICATION
+
+        print('\n\n\tLoading the selected optimizer...')
+
+        # Setup Adam or SGD optimizers for both the generator and the discriminator
+        if optimizer_choice == "adam":
+            optimizer = optim.Adam(net.parameters(), lr=lr)
+        elif optimizer_choice == "sgd":
+            optimizer = optim.SGD(net.parameters(), lr=lr)
+        elif optimizer_choice == "rmsprop":
+            optimizer = optim.RMSprop(net.parameters(), lr=lr)
+        else:
+            raise ValueError("Invalid choice of optimizer")
+
+        sleep(2)
+
+        #PRINT OF THE TRAINING FEATURES:
+        print('\n\n\tSome hyperparameters of the network:\n')
+        #print(f'\t\t- Model: {args.selectionModel}')
+        print(f'\t\t- Learning rate: {lr}')
+        print(f'\t\t- Optimizer: {optimizer_choice}')
+        print(f'\t\t- Epochs: {epochs}')
+        print(f'\t\t- Batch size: {minibatch_size}')   
+        print(f'\t\t- Loss function selected: {loss_function_choice}')
+        
+        #Print of the architecture:
+        print(f'\t\t- Architecture:')
+        summary(net, (minibatch_size, 1))
+
+        
+        sleep(10)
+
+
+       
+    
+    def train(net, X_train, y_train, X_val, y_val, epochs=2000, lr=0.001, minibatch_size=32, loss_function_choice="rmse", optimizer_choice="adam"):
         """
         Train a neural network for multiple epochs.
 
@@ -152,20 +259,20 @@ class Net_training(torch.nn.Module):
         Returns:
             The two arrays with the R2s on training and validation data computed during the training epochs.
         """
-        #Function for multi-selection loss function
-        def loss_function(loss_function_choise, o, y):
-            if loss_function_choise == 'mse': #Mean Square Error
-                return torch.nn.functional.mse_loss(o, y, reduction='mean')
-            elif loss_function_choise == 'rmse':#Root Mean Squared Error: misura della radice quadrata dell'errore quadratico medio tra le previsioni del modello e target (migliore per regressioni).
-                return torch.sqrt(torch.nn.functional.mse_loss(o, y, reduction='mean'))
-            elif loss_function_choise == 'mae':#Mean Absolute Error:Misura la media delle differenze assolute tra le previsioni del modello e i valori di destinazione.
-                return torch.nn.functional.l1_loss(o, y, reduction='mean')
-            elif loss_function_choise == 'msle':
-                return torch.nn.functional.mse_loss(torch.log(o + 1), torch.log(y + 1), reduction='mean')
+        # Function for multi-selection loss function
+        def loss_function(loss_function_choice, o, y):
+            if loss_function_choice == 'mse':  # Mean Square Error
+                return nn.MSELoss()(o, y)
+            elif loss_function_choice == 'rmse':  # Root Mean Squared Error
+                return torch.sqrt(nn.MSELoss()(o, y))
+            elif loss_function_choice == 'mae':  # Mean Absolute Error
+                return nn.L1Loss()(o, y)
+            elif loss_function_choice == 'msle':
+                return nn.MSELoss()(torch.log(o + 1), torch.log(y + 1))
             else:
                 raise ValueError("Invalid choice of loss function")
-            
-        #Function for multi-selection optimizer
+
+        # Function for multi-selection optimizer
         def select_optimizer(optimizer_choice, parameters, lr):
             if optimizer_choice == 'adam':
                 return optim.Adam(parameters, lr=lr)
@@ -176,42 +283,49 @@ class Net_training(torch.nn.Module):
             else:
                 raise ValueError("Invalid choice of optimizer")
 
-        #Unisco i tensori del input e output
-        train_dataset = TensorDataset(X_train, y_train)
-        val_dataset = TensorDataset(X_val, y_val)
+        print("Training the network...")
+        sleep(2)
+        print('\n\n\tLoading the dataset and creating the dataloader...\n')
 
-        #Dataloader
-        dataloader_train = torch.utils.data.DataLoader(train_dataset, batch_size=minibatch_size, shuffle=False,
-                                                 num_workers=2, drop_last=True)
-        dataloader_val = torch.utils.data.DataLoader(val_dataset, batch_size=minibatch_size, shuffle=False,
-                                                 num_workers=2, drop_last=True)
-        
-        #Telling the network we are going to train it (and not to simply evaluate it)    
+        # Unisco i tensori del input e output
+        train_dataset = TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
+        val_dataset = TensorDataset(torch.Tensor(X_val), torch.Tensor(y_val))
+
+        # Dataloader
+        dataloader_train = DataLoader(train_dataset, batch_size=minibatch_size, shuffle=False, drop_last=True)
+        dataloader_val = DataLoader(val_dataset, batch_size=minibatch_size, shuffle=False, drop_last=True)
+
+        # We assume that all the network parameters are on the same device
+        device = next(net.parameters()).device
+
+        #Print to verify that everything has been executed correctly, that the objects have been instantiated and the device is defined:
+        print(f'\t\tThe device selected for the training is: {device}')
+        print(f'\t\tDatasets objects = {train_dataset, val_dataset}')
+        print(f'\t\tDataloaders objects = {dataloader_train, dataloader_val}')
+        print(f'\t\tNumber of datasets training and validation samples = {len(train_dataset, val_dataset)}')
+        sleep(4)
+
+        # Telling the network we are going to train it (and not to simply evaluate it)
         net.train()
 
-        #Defining the loss function
-        loss = loss_function
+        # Defining the way we are going to update the net parameters
+        optimizer = select_optimizer(optimizer_choice, net.parameters(), lr)
 
-        #Defining the way we are going to update the net parameters
-        optimizer = select_optimizer  
+        
 
-        #We assume that all the network parameters are on the same device
-        device = next(net.parameters()).device 
-
-        #Definisco alcune quantità utili
-        n_sample = X_train.shape[0] #numero training sample
+        # Definisco alcune quantità utili
+        n_sample = X_train.shape[0]  # numero training sample
         best_r2_val = None
-        r2s_train = np.zeros(epochs)#Vettore di zeri dove salveremo r2s per ogni training epoch
-        r2s_val = np.zeros(epochs)#Vettore di zeri dove salveremo r2s per ogni validation epoch
+        r2s_train = np.zeros(epochs)  # Vettore di zeri dove salveremo r2s per ogni training epoch
+        r2s_val = np.zeros(epochs)  # Vettore di zeri dove salveremo r2s per ogni validation epoch
 
-        
         ############## TRAINING LOOP ##############
-        
-        for e in range(0, epochs): # loop on epochs
-            #Azzero tutte le mie quantità
+
+        for e in trange(0, epochs):  # loop on epochs
+            # Azzero tutte le mie quantità
             loss_value = 0.
             r2_status = None
-            nb = 0 #rappresenta l'indice del mini-batch corrente nel ciclo dei mini-batch
+            nb = 0  # rappresenta l'indice del mini-batch corrente nel ciclo dei mini-batch
 
             for X_minibatch, y_minibatch in dataloader_train:  # loop on mini-batches
                 # Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
@@ -220,15 +334,13 @@ class Net_training(torch.nn.Module):
                 X_minibatch = X_minibatch.to(device)
                 y_minibatch = y_minibatch.to(device)
 
-                outputs = net(X_minibatch)  # going forward, "net" is a callable object
-                loss_value_on_minibatch = loss(o=outputs, y=y_minibatch)  # RMSE
+                outputs = net.forward(X_minibatch)  # going forward, "net" is a callable object
+                loss_value_on_minibatch = loss_function(loss_function_choice, outputs, y_minibatch)  # RMSE
 
                 with torch.no_grad():
-                    r2_train_on_minibatch, r2_train, r2_status = Net_training.r2_score(outputs, y_minibatch,
-                                                                                    update_from=r2_status)
+                    r2_train_on_minibatch, r2_train, r2_status = Net_training.r2_score(outputs, y_minibatch, update_from=r2_status)
 
-                    print("\tminibatch: {}, loss_train: {:.4f}, "
-                        "r2_train: {:.2f}".format(nb + 1, loss_value_on_minibatch, r2_train_on_minibatch))
+                    print("\tminibatch: {}, loss_train: {:.4f}, r2_train: {:.2f}".format(nb + 1, loss_value_on_minibatch, r2_train_on_minibatch))
 
                     loss_value += (loss_value_on_minibatch.item() ** 2) * X_minibatch.size(0)  # needed to estimate the train loss
 
@@ -245,8 +357,7 @@ class Net_training(torch.nn.Module):
                 X_val_minibatch = X_val_minibatch.to(device)
                 y_val_minibatch = y_val_minibatch.to(device)
 
-                r2_val, _ = Net_training.predict_and_r2_score(net, X_val_minibatch, y_val_minibatch,
-                                                            minibatch_size=minibatch_size)
+                r2_val, _ = Net_training.predict_and_r2_score(net, X_val_minibatch, y_val_minibatch, minibatch_size=minibatch_size)
                 found_best = False
                 if best_r2_val is None or r2_val > best_r2_val:
                     best_r2_val = r2_val
@@ -254,14 +365,13 @@ class Net_training(torch.nn.Module):
                     torch.save(net.state_dict(), 'net_best.pth')
 
             loss_value = np.sqrt(loss_value / n_sample)
-            print("epoch: {}, loss_train: {:.4f}, "
-                "r2_train: {:.2f}, r2_val: {:.2f}".format(e + 1, loss_value, r2_train, r2_val)
-                + (" (best)" if found_best else ""))
+            print("epoch: {}, loss_train: {:.4f}, r2_train: {:.2f}, r2_val: {:.2f}".format(e + 1, loss_value, r2_train, r2_val) + (" (best)" if found_best else ""))
 
             r2s_train[e] = r2_train
             r2s_val[e] = r2_val
 
         return r2s_train, r2s_val
+
 
 
     def plot(r2s_train, r2s_val, output_test, test_y):
@@ -340,27 +450,6 @@ if __name__ == "__main__":
     data_X_train, m, s, max, min= normalize_input_data(data_X_train)
     data_X_val, _, _, _, _ = normalize_input_data(data_X_val, m, s)
     data_X_test, _, _, _, _ = normalize_input_data(data_X_test, m, s)
-
-    
-    
-    #Stampe forma dati
-    #print("DATI:\n",data_X_train)
-    #print(f"MEDIA:{m}, STD:{s}, MAX:{max}, MIN:{min}")
-    
-    '''
-    ### CONTEGGIO NEGATIVI POST NORMALIZZAZIONE + DOMANDA ###
-    # Converti il tensore Torch in un tensore booleano con valori True per i numeri negativi
-    negative_mask = (data_X_train < 0)
-
-    # Conta il numero di valori True nel tensore booleano
-    num_negatives = torch.sum(negative_mask).item()
-
-    print("Numero di numeri negativi nel tensore:", num_negatives)
-    
-    #Domanda: è normale che io abbia più numeri negativi post normalizzazione? In teoria questa dovrebbe mantenere la distribuzione relativa dei dati nel proprio intervallo.
-    #        Oppure conviene fissare max = 100 e min = -100 e quindi viene una distribuzione sbilanciata ma che mantiene i segni? normalize_input_data_100
-    '''
-    
     
     #Ensure that we keep track of the mean and std used to normalize the data
     torch.save([m, s, max, min], 'C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/normalizers_hyperparam.pth')
@@ -374,17 +463,27 @@ if __name__ == "__main__":
     #Neuroni dei miei layer
     input_size = 1
     output_size = 1
-    hidden_layer1_size = 10
-    hidden_layer2_size = 4
+    hidden_layers = [10,6,4]
 
     #Creo l'architettura:
-    net = Net(input_size, output_size)
-    net.add_hidden_layer(hidden_layer1_size)
-    net.add_hidden_layer(hidden_layer2_size)
+    net = Net(input_size, output_size,hidden_layers)
     
     #Inizializzo i pesi
     net.initialize_weights()
-    
+
+    # Sposto il modello sulla GPU
+    net.to(my_device)
+
+    # Sposto i dati di addestramento sulla GPU
+    data_X_train = data_X_train.to(my_device)
+    data_y_train = data_y_train.to(my_device)
+    data_X_val = data_X_val.to(my_device)
+    data_y_val = data_y_val.to(my_device)
+
+    #### TRAINING PHASE ####
+    # training the network
+    bah = Net_training.prova(net, data_X_train, data_y_train, data_X_val, data_y_val, epochs=2000, lr=0.001, minibatch_size=32, loss_function_choice="rmse", optimizer_choice="adam")
+
  
     
     
