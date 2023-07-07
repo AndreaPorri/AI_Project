@@ -1,17 +1,25 @@
 import pandas as pd
-from dataset_function import *
+import numpy as np
+import os
+import matplotlib as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-import matplotlib as plt
+from dataset_function import *
 from tqdm import trange
 from time import sleep
 from torchsummary import summary
+from sklearn.metrics import r2_score
 
-def print_network_architecture(model):
-    print(model)
-    print("\n")
+def createDirectory(nameDirectory: str):
+    """
+    This function is used to create folders, taking as input the absolute path of the folder we want to create (path/foldername). In our case, the path is passed
+    through the yaml file. The folders that will be created are those for saving the generator/discriminator training, and during the evaluation phase, the folder
+    where the images produced by the generator will be saved.
+    """
+    if not os.path.exists(f'{nameDirectory}'):  #checks if the folder with that path already exists
+        os.mkdir(f'{nameDirectory}')  #if it does not exist creates it
 
 class Net(nn.Module):
     def __init__(self, input_size, output_size, hidden_sizes):
@@ -32,8 +40,8 @@ class Net(nn.Module):
 
         self.initialize_weights()
 
-    def forward(self, x):
-        return self.layers(x)
+    def forward(self, inputs):
+        return self.layers(inputs)
 
     def initialize_weights(self):
         for layer in self.layers:
@@ -47,7 +55,7 @@ class Net(nn.Module):
 class Net_training(torch.nn.Module):
     def __init__(self):
         super(Net_training, self).__init__()
-
+    
     def r2_score(outputs, targets, update_from=None):
         """
         Compute the R2 score of the provided network outputs with respect to given targets.
@@ -76,12 +84,12 @@ class Net_training(torch.nn.Module):
         r2 = 1. - sum_errors / (sum_squared_targets - (sum_targets ** 2) / n_sample)
 
         
-        '''
+        """
         Se il parametro update_from viene fornito, significa che la funzione viene chiamata per aggiornare 
         un punteggio R2 esistente con nuovi dati(caso di online mode - mini-batch). Se il parametro update_from non viene 
         fornito, significa che la funzione viene chiamata per calcolare il punteggio R2 da zero su un singolo 
         gruppo di dati(batch mode).
-        '''        
+        """        
         if update_from is not None:
             #Aggiornamento delle quantità precedenti
             sum_errors += update_from[0]
@@ -99,6 +107,59 @@ class Net_training(torch.nn.Module):
 
         #restituisce r2 di questo singolo e cumulato, ed inoltre restituisce la 4-tuple aggiornata
         return r2, r2_updated, status
+    
+    def r2_score_prova(outputs, targets, update_from=None):
+        """
+        Compute the R2 score of the provided network outputs with respect to given targets.
+
+        Args:
+            outputs: the outputs of the network on a batch of data.
+            targets: the ground truth targets of the data.
+            update_from (optional): a 4-element list/tuple, composed of those quantities that are needed to model
+                an initial status of the R2 computation; the computation of the R2 will start from this status.
+
+        Returns:
+            R2 score computed on the given data, computed also considering the initial status, and the status (4-element
+                tuple) needed for future updates of this score.
+        Usage:
+            The R2 score is a common measure of reliability or goodness of fit of a model that we are training.
+            It indicates how well the model is able to explain the variation in the data compared to the expected 
+            output values (targets).
+        """
+        #Calcolo le seguenti quantità utili per ottenere R2
+        #numeratore
+        sum_errors = torch.sum(torch.pow(outputs - targets, 2)).item()  #.item() utilizzato per ottenere lo scalare e non vettore
+        
+        #denominatore
+        mean_output = torch.mean(outputs, dim=0)
+        sum_errors_den = torch.sum(torch.pow(outputs - mean_output, 2)).item()
+
+        #Calcolo di r2
+        r2 = 1. - sum_errors / sum_errors_den
+
+        
+        """
+        Se il parametro update_from viene fornito, significa che la funzione viene chiamata per aggiornare 
+        un punteggio R2 esistente con nuovi dati(caso di online mode - mini-batch). Se il parametro update_from non viene 
+        fornito, significa che la funzione viene chiamata per calcolare il punteggio R2 da zero su un singolo 
+        gruppo di dati(batch mode).
+        """        
+        if update_from is not None:
+            #Aggiornamento delle quantità precedenti
+            sum_errors += update_from[0]
+            sum_errors_den += update_from[1]
+            #Aggiornamento score R2
+            r2_updated = 1. - sum_errors / sum_errors_den
+        else:
+            #Calcolo da zero dello score r2
+            r2_updated = r2
+
+        #Aggiornamento della 4-tuple con valori aggiornati
+        status = (sum_errors,sum_errors_den)
+
+        #restituisce r2 di questo singolo e cumulato, ed inoltre restituisce la 4-tuple aggiornata
+        return r2, r2_updated, status
+
 
     
     def predict_and_r2_score(net, X, y, minibatch_size=None):
@@ -137,7 +198,8 @@ class Net_training(torch.nn.Module):
                 output = net(X_minibatch)
                 outputs.append(output)
 
-                _, r2, r2_status = Net_training.r2_score(output, y_minibatch, update_from=r2_status)
+                #_, r2, r2_status = Net_training.r2_score(output, y_minibatch, update_from=r2_status)
+                r2 = r2_score(output, y_minibatch)
 
                 if t == n:
                     break
@@ -146,6 +208,41 @@ class Net_training(torch.nn.Module):
                 net.train()
 
             return r2, torch.cat(outputs, dim=0)
+        
+    def predict_and_r2_score_prova(net, dataloader):
+        '''
+        Make prediction and compute the R2 score (it supports mini-batches).
+
+        Args:
+            net: the neural network of the class Net.
+            dataloader: dataloader object that provides batches of data.
+
+        Returns:
+            R2 score and the network output.
+        '''
+
+        device = next(net.parameters()).device  # we assume that all the network parameters are on the same device
+        outputs = []
+        r2_status = None
+
+        with torch.no_grad():
+            training_mode = net.training
+            net.eval()
+
+            for X_minibatch, y_minibatch in dataloader:
+                X_minibatch = X_minibatch.to(device)
+                y_minibatch = y_minibatch.to(device)
+
+                output = net(X_minibatch)
+                outputs.append(output)
+
+                # _, r2, r2_status = Net_training.r2_score(output, y_minibatch, update_from=r2_status)
+                r2 = r2_score(output, y_minibatch)
+
+        if training_mode:
+            net.train()
+
+        return r2, torch.cat(outputs, dim=0)
     
     def prova(net, X_train, y_train, X_val, y_val, epochs=2000, lr=0.001, minibatch_size=32, loss_function_choice="rmse", optimizer_choice="adam"):
         """
@@ -198,8 +295,6 @@ class Net_training(torch.nn.Module):
         # Function for multi-selection loss function
         if loss_function_choice == 'mse':  # Mean Square Error
             loss_function = nn.MSELoss()
-        elif loss_function_choice == 'rmse':  # Root Mean Squared Error
-            loss_function = nn.MSELoss()
         elif loss_function_choice == 'mae':  # Mean Absolute Error
             loss_function = nn.L1Loss()
         else:
@@ -231,14 +326,126 @@ class Net_training(torch.nn.Module):
         print(f'\t\t- Epochs: {epochs}')
         print(f'\t\t- Batch size: {minibatch_size}')   
         print(f'\t\t- Loss function selected: {loss_function_choice}')
+
+        sleep(4)
         
         #Print of the architecture:
-        print(f'\t\t- Architecture:')
-        summary(net, (minibatch_size, 1))
+        print(f'\t\t- Architecture:')    
+        summary(net,(minibatch_size,1))
 
         
         sleep(10)
 
+        print("\n\n\tStarting the training loop...")
+
+        #Telling the network we are going to train it (and not to simply evaluate it)
+        net.train()
+
+        #Create the directory for the result
+        createDirectory('D:/Results')
+
+        # Definisco alcune quantità utili
+        n_sample = X_train.shape[0]  # numero training sample
+        best_r2_val = None
+        r2s_train = np.zeros(epochs)  # Vettore di zeri dove salveremo r2s per ogni training epoch
+        r2s_val = np.zeros(epochs)  # Vettore di zeri dove salveremo r2s per ogni validation epoch
+        net_losses = [] #list of each loss
+
+        ######### LOOP ON EPOCHS ##########
+        for e in trange(epochs):  # loop on epochs
+            # Azzero tutte le mie quantità
+            loss_value = 0.
+            r2_status = None
+            nb = 0  # rappresenta l'indice del mini-batch corrente nel ciclo dei mini-batch
+
+            for X_minibatch, y_minibatch in dataloader_train:  #loop on mini-batches
+                # Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
+                optimizer.zero_grad()
+
+                #Separate input and output
+                X_minibatch = X_minibatch.to(device)
+                y_minibatch = y_minibatch.to(device)
+
+                #Calculate the outputs
+                output = net(X_minibatch) #going forward, "net" is a callable object
+
+                
+                #Calculate the loss on batches and save it:
+                loss_value_on_minibatch = loss_function(output, y_minibatch)
+            
+                #Calculate gradients for all mini-batch on the net with the backward step. The backward() operation is used 
+                #for calculating the gradient of the error with respect to its parameters:
+                loss_value_on_minibatch.backward()
+                
+                #PARAMETERS UPDATE
+                #This function is used to update the parameters based on the calculated gradients. This process of
+                #updating parameters is called "optimization" and is performed using an optimization algorithm such as Adam,SGD or other:
+                optimizer.step()
+                
+                #### Saving of the best net ####
+
+                if len(net_losses) == 0: #check
+                    #Save the "model state" of the net to a .pth file in the specified path
+                    torch.save(net.state_dict(), f"D:/Results/net_Best.pth")
+                    #Write a .txt file to the specified path and writes information regarding the batch number and the epoch to which
+                    #the best trained net belongs
+                    with open(f"D:/Results/net_Best.txt", "w") as f:
+                        print(f"Checkpoint BEST\n\n\tBATCH_ID:\t{nb + 1}\n\EPOCH:\t{e + 1}", file=f)
+                elif loss_value_on_minibatch.item() < np.min(net_losses):
+                     #check if the loss in this batch is the smallest compared to previous batches
+                    #Save the "model state" of the generator to a .pth file in the specified path:
+                    torch.save(net.state_dict(), f"D:/Results/net_Best.pth")
+                    #Writes a .txt file to the specified path and writes information regarding the batch number and the era to which 
+                    #the best trained generator belongs:
+                    with open(f"D:/Results/net_Best.txt", "w") as f:
+                        print(f"Checkpoint BEST\n\tBATCH_ID:\t{nb + 1}\n\tEPOCH:\t{e + 1}", file=f)
+
+                #Save the generator and discriminator losses of each batch within the lists defined earlier:
+                net_losses.append(loss_value_on_minibatch.item())
+                
+
+
+                #Print of the loss and the r2score, and updating the globale loss value of a single epoch
+                with torch.no_grad():
+                    #r2_train_on_minibatch, r2_train, r2_status = Net_training.r2_score(output, y_minibatch, update_from=r2_status)
+                    #r2_train_on_minibatch, r2_train, r2_status = Net_training.r2_score_prova(output, y_minibatch)
+
+
+                    print("\tMinibatch: {}, loss_train: {:.4f}".format(nb + 1, loss_value_on_minibatch))
+
+                    loss_value += (loss_value_on_minibatch.item() ** 2) * X_minibatch.size(0)  # needed to estimate the train loss
+
+                #This line of code save the "model state" of the net for each mini-batch.
+                #So the .state_dict() method returns a "model state" that is like a dictionary of parameters that can be loaded
+                #into a model of identical architecture. In practice, the model state includes network parameters, e.g. the 
+                #weights of connections, information about the activation functions used, etc.   
+                torch.save(net.state_dict(), f"D:/Results/net_Epoch{e + 1}_Batch{nb + 1}.pth")
+                
+                #Counter of the mini-batch index
+                nb += 1
+                if nb == len(dataloader_train):
+                    break
+            
+            #EVALUATION ON VALIDATION SET(CONTROLLA)
+            for X_val_minibatch, y_val_minibatch in dataloader_val:
+
+                X_val_minibatch = X_val_minibatch.to(device)
+                y_val_minibatch = y_val_minibatch.to(device)
+
+                r2_val, _ = Net_training.predict_and_r2_score(net, X_val_minibatch, y_val_minibatch, minibatch_size=minibatch_size)
+                found_best = False
+                if best_r2_val is None or r2_val > best_r2_val:
+                    best_r2_val = r2_val
+                    found_best = True
+                    torch.save(net.state_dict(), 'net_best.pth')
+
+            loss_value = np.sqrt(loss_value / n_sample)
+            print("epoch: {}, loss_train: {:.4f}, r2_train: {:.2f}, r2_val: {:.2f}".format(e + 1, loss_value, r2_train, r2_val) + (" (best)" if found_best else ""))
+
+            r2s_train[e] = r2_train
+            r2s_val[e] = r2_val
+
+        return r2s_train
 
        
     
@@ -318,6 +525,59 @@ class Net_training(torch.nn.Module):
         best_r2_val = None
         r2s_train = np.zeros(epochs)  # Vettore di zeri dove salveremo r2s per ogni training epoch
         r2s_val = np.zeros(epochs)  # Vettore di zeri dove salveremo r2s per ogni validation epoch
+
+        for e in trange(epochs):  # loop on epochs
+            # Azzero tutte le mie quantità
+            loss_value = 0.
+            r2_status = None
+            nb = 0  # rappresenta l'indice del mini-batch corrente nel ciclo dei mini-batch
+
+            for X_minibatch, y_minibatch in dataloader_train:  #loop on mini-batches
+                # Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
+                optimizer.zero_grad()
+
+                #Separate input and output
+                X_minibatch = X_minibatch.to(device)
+                y_minibatch = y_minibatch.to(device)
+
+                outputs = net.forward(X_minibatch)  # going forward, "net" is a callable object
+                loss_value_on_minibatch = loss_function(loss_function_choice, outputs, y_minibatch)  # RMSE
+
+                with torch.no_grad():
+                    r2_train_on_minibatch, r2_train, r2_status = Net_training.r2_score(outputs, y_minibatch, update_from=r2_status)
+
+                    print("\tminibatch: {}, loss_train: {:.4f}, r2_train: {:.2f}".format(nb + 1, loss_value_on_minibatch, r2_train_on_minibatch))
+
+                    loss_value += (loss_value_on_minibatch.item() ** 2) * X_minibatch.size(0)  # needed to estimate the train loss
+
+                loss_value_on_minibatch.backward()  # going backward
+                optimizer.step()  # updating model parameters
+
+                nb += 1
+                if nb == len(dataloader_train):
+                    break
+
+            torch.save(net.state_dict(), 'net.pth')
+
+            for X_val_minibatch, y_val_minibatch in dataloader_val:
+                X_val_minibatch = X_val_minibatch.to(device)
+                y_val_minibatch = y_val_minibatch.to(device)
+
+                r2_val, _ = Net_training.predict_and_r2_score(net, X_val_minibatch, y_val_minibatch, minibatch_size=minibatch_size)
+                found_best = False
+                if best_r2_val is None or r2_val > best_r2_val:
+                    best_r2_val = r2_val
+                    found_best = True
+                    torch.save(net.state_dict(), 'net_best.pth')
+
+            loss_value = np.sqrt(loss_value / n_sample)
+            print("epoch: {}, loss_train: {:.4f}, r2_train: {:.2f}, r2_val: {:.2f}".format(e + 1, loss_value, r2_train, r2_val) + (" (best)" if found_best else ""))
+
+            r2s_train[e] = r2_train
+            r2s_val[e] = r2_val
+
+        return r2s_train, r2s_val
+
 
         ############## TRAINING LOOP ##############
 
@@ -463,7 +723,7 @@ if __name__ == "__main__":
     #Neuroni dei miei layer
     input_size = 1
     output_size = 1
-    hidden_layers = [10,6,4]
+    hidden_layers = [128, 256]
 
     #Creo l'architettura:
     net = Net(input_size, output_size,hidden_layers)
@@ -482,9 +742,7 @@ if __name__ == "__main__":
 
     #### TRAINING PHASE ####
     # training the network
-    bah = Net_training.prova(net, data_X_train, data_y_train, data_X_val, data_y_val, epochs=2000, lr=0.001, minibatch_size=32, loss_function_choice="rmse", optimizer_choice="adam")
-
- 
+    bah = Net_training.prova(net, data_X_train, data_y_train, data_X_val, data_y_val, epochs=5, lr=0.01, minibatch_size=32, loss_function_choice="mse", optimizer_choice="adam")
     
     
 
