@@ -6,19 +6,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from dataset_function import *
+from encoder import *
 from tqdm import trange
 from time import sleep
 from torchsummary import summary
-from sklearn.metrics import r2_score
 
-def createDirectory(nameDirectory: str):
-    """
-    This function is used to create folders, taking as input the absolute path of the folder we want to create (path/foldername). In our case, the path is passed
-    through the yaml file. The folders that will be created are those for saving the generator/discriminator training, and during the evaluation phase, the folder
-    where the images produced by the generator will be saved.
-    """
-    if not os.path.exists(f'{nameDirectory}'):  #checks if the folder with that path already exists
-        os.mkdir(f'{nameDirectory}')  #if it does not exist creates it
+torch.manual_seed(42)
 
 class Net(nn.Module):
     def __init__(self, input_size, output_size, hidden_sizes):
@@ -29,12 +22,13 @@ class Net(nn.Module):
         for hidden_size in hidden_sizes:
             hidden_layers.append(nn.Linear(prev_size, hidden_size))
             hidden_layers.append(nn.Tanh())
+            hidden_layers.append(nn.Dropout(0.1,inplace=False)),
             prev_size = hidden_size
 
         self.layers = nn.Sequential(
             *hidden_layers,
             nn.Linear(prev_size, output_size),
-            nn.Sigmoid()
+            nn.Sigmoid(),       
         )
 
         self.initialize_weights()
@@ -121,7 +115,7 @@ class Net_training(torch.nn.Module):
 
         return avg_val_loss
     
-    def prova(net, X_train, X_val, y_train, y_val, epochs=2000, lr=0.001, minibatch_size=32, loss_function_choice="rmse", optimizer_choice="adam"):
+    def training(net, X_train, X_val, y_train, y_val, n_epochs=1000, lr=0.001, minibatch_size=32, loss_function_choice="rmse", optimizer_choice="adam"):
         """
         Train a neural network for multiple epochs.
 
@@ -143,12 +137,14 @@ class Net_training(torch.nn.Module):
 
         print("Training the network...")
         sleep(2)
-        print('\n\n\tLoading the dataset and creating the dataloader...\n')
+        print('\n\n\tLoading the dataset and creating the dataloader...\n\n\n')
 
+        print("Validation and training dataset shape")
         print("X_train shape:", X_train.shape)
         print("y_train shape:", y_train.shape)
         print("X_val shape:", X_val.shape)
         print("y_val shape:", y_val.shape)
+        print("\n\n\n")
 
 
         #Combine input and output tensors
@@ -165,8 +161,10 @@ class Net_training(torch.nn.Module):
         # Print to verify that everything has been executed correctly, that the objects have been instantiated and the device is defined:
         print(f'\t\tThe device selected for the training is: {device}')
         print(f'\t\tTraining dataset object = {train_dataset}')
-        print(f'\t\tTaining dataloader object = {dataloader_train}')
-        print(f'\t\tNumber of datasets training samples = {len(train_dataset)}')
+        print(f'\t\tTraining dataloader object = {dataloader_train}')
+        print(f'\t\tValidation dataset object = {val_dataset}')
+        print(f'\t\tValidation dataloader object = {dataloader_val}')
+        print(f'\t\tNumber of datasets training and validation samples = {len(train_dataset),len(val_dataset)}')
         sleep(4)
 
         
@@ -203,7 +201,7 @@ class Net_training(torch.nn.Module):
         print('\n\n\tSome hyperparameters of the network:\n')
         print(f'\t\t- Learning rate: {lr}')
         print(f'\t\t- Optimizer: {optimizer_choice}')
-        print(f'\t\t- Epochs: {epochs}')
+        print(f'\t\t- Epochs: {n_epochs}')
         print(f'\t\t- Batch size: {minibatch_size}')   
         print(f'\t\t- Loss function selected: {loss_function_choice}')
 
@@ -211,7 +209,7 @@ class Net_training(torch.nn.Module):
         
         #Print of the architecture:
         print(f'\t\t- Architecture:')    
-        summary(net,(minibatch_size,1))
+        print(net)
 
         
         sleep(10)
@@ -229,18 +227,16 @@ class Net_training(torch.nn.Module):
         net.train()
 
         #Create the directory for the result
-        createDirectory('D:/Results')
+        createDirectory('D:/Results/MLP')
 
         # Definisco alcune quantità utili
         net_train_losses = [] #list of each loss of the epoch
         net_val_losses = [] #list of the loss of the epochs
 
         ######### LOOP ON EPOCHS ##########
-        for e in trange(epochs):  # loop on epochs
-            # Azzero tutte le mie quantità
-            loss_value_train= 0.
-            nb = 0  # rappresenta l'indice del mini-batch corrente nel ciclo dei mini-batch
-            loss_value_train = 0.0 # Inizializza la loss della fase di training per l'epoca corrente
+        for e in trange(n_epochs):  # loop on epochs
+            # Inizializza la loss della fase di training per l'epoca corrente
+            loss_value_train = 0.
 
             for nb, (X_minibatch, y_minibatch) in enumerate(dataloader_train):  #loop on mini-batches
                 # Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
@@ -273,20 +269,19 @@ class Net_training(torch.nn.Module):
                     # Accumula la loss nella loss della fase di training
                     loss_value_train += loss_value_on_minibatch.item()
 
-            
-            #### Saving of the best net ####
-            #Save the "model state" of the net to a .pth file in the specified path
-            torch.save(net.state_dict(), f"D:/Results/net_ep_{e}.pth")
-            #Write a .txt file to the specified path and writes information regarding the batch number and the epoch to which
-            #the best trained net belongs
-            with open(f"D:/Results/net_ep_{e}.txt", "w") as f:
-                print(f"Checkpoint net\n\n\tBATCH_ID:\t{nb + 1}\n\EPOCH:\t{e + 1}", file=f)
-
             #loss della training epoch
             loss_value_train /= len(dataloader_train)
 
             #Save the net losses of each batch within the lists defined earlier
             net_train_losses.append(loss_value_train)
+            
+            #### Saving of the best net ####
+            #Save the "model state" of the net to a .pth file in the specified path
+            torch.save(net.state_dict(), f"D:/Results/MLP/net_ep_{e + 1}.pth")
+            #Write a .txt file to the specified path and writes information regarding the batch number and the epoch to which
+            #the best trained net belongs
+            with open(f"D:/Results/MLP/net_ep_{e + 1}.txt", "w") as f:
+                print(f"Checkpoint net:\n\n\tEPOCH:\t{e + 1}\n\n\tLOSS:\t{loss_value_train}", file=f)
 
             #Validation of the epoch
             loss_valid = Net_training.validate(net, dataloader_val, loss_function)
@@ -295,8 +290,8 @@ class Net_training(torch.nn.Module):
             net_val_losses.append(loss_valid)
         #Alla fine del ciclo di addestramento, crea il plot delle perdite di training e validation per ogni epoch
         plt.figure(figsize=(10, 6))
-        plt.plot(range(1, epochs + 1), net_train_losses, label='Training Loss')
-        plt.plot(range(1, epochs + 1), net_val_losses, label='Validation Loss')
+        plt.plot(range(1, n_epochs + 1), net_train_losses, label='Training Loss')
+        plt.plot(range(1, n_epochs + 1), net_val_losses, label='Validation Loss')
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
         plt.title('Training and Validation Loss')
@@ -337,24 +332,25 @@ class Net_training(torch.nn.Module):
 if __name__ == "__main__":
 
                                     ### PREPROCESS DATASET ###
-
+    #Creo la cartella risultati se non esiste gia
     #Caricamento dataframe da file .csv
     filename = "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/AirQualityUCI.csv"
     dataframe = pd.read_csv(filename, sep=";")
     #print(dataframe.columns)
 
-    #Dataset check caratteristiche:
-    #check_dataset(dataframe)
 
     #Ridimensionamento dataset
-    dataset_reduced = dataset_reduction(dataframe,"T","RH")
+    dataset_reduced = dataset_reduction(dataframe,"NOx(GT)","PT08.S1(CO)","T","RH","PT08.S2(NMHC)","CO(GT)")
     #print('Il dataset senza le eliminazioni è:\n ',dataset_reduced)
-    #print('la dimensionalità è: ',dataset_reduced.shape)
+    print('la dimensionalità è: ',dataset_reduced.shape)
+    #print(dataset_reduced.columns)
+    #sleep(120)
     
     #Pulitura dataset ridotto
-    dataset_reduced = check_dataset_format(dataset_reduced)
+    dataset_reduced = cleaning_dataset_function(dataset_reduced)
     #print('Il dataset con le eliminazioni è:\n ',dataset_reduced)
-    #print('la dimensionalità è: ',dataset_reduced.shape)
+    print('la dimensionalità ridotta è: ',dataset_reduced.shape)
+    sleep(5)
 
     #Salvo il dataset ridotto
     create_file_csv(dataset_reduced,"C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced.csv")
@@ -369,43 +365,80 @@ if __name__ == "__main__":
     
     #Splitting data in training, validation e test sets
     data_X_train, data_y_train, data_X_val, data_y_val, data_X_test, data_y_test = create_splits_unbalanced(data_X, data_y, 0.7, 0.15)
-    '''
-    ### CONTEGGIO NEGATIVI PRE NORMALIZZAZIONE ###
-    # Converti il tensore Torch in un tensore booleano con valori True per i numeri negativi
-    negative_mask = (data_X_train < 0)
-
-    # Conta il numero di valori True nel tensore booleano
-    num_negatives = torch.sum(negative_mask).item()
-
-    print("Numero di numeri negativi nel tensore:", num_negatives)
-    '''    
-    # normalizing data input
-    data_X_train, m, s, max, min= normalize_input_data(data_X_train)
-    data_X_val, _, _, _, _ = normalize_input_data(data_X_val, m, s)
-    data_X_test, _, _, _, _ = normalize_input_data(data_X_test, m, s)
     
-    #Ensure that we keep track of the mean and std used to normalize the data
-    torch.save([m, s, max, min], 'C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/normalizers_hyperparam.pth')
-
+    # normalizing data input
+    data_X_train, _, _ = normalize_input_data(data_X_train)
+    data_X_val, _, _ = normalize_input_data(data_X_val)
+    data_X_test, _, _ = normalize_input_data(data_X_test)
+    
     #Normalizziamo pure gli output
     data_y_train = normalize_output_data(data_y_train)
     data_y_val = normalize_output_data(data_y_val)
     data_y_test = normalize_output_data(data_y_test)
 
-    ######## INIZIALIZZO LA RETE ###########
+    ################################################################################ 
+                                #INIZIALIZZO LA RETE
+    ################################################################################ 
+
+    #########################
+            #ENCODER
+    #########################
+    # Per caricare il modello
+    autoencoder = Autoencoder()
+    autoencoder.load_state_dict(torch.load('D:/Results/Autoencoder/net_ep_300.pth'))
+
+    # Definisci una nuova rete con solo la porzione 5-3-1
+    # Puoi ottenere i primi tre layer tramite list slicing
+    encoder = autoencoder.encoder
+    encoder.to(my_device)
+
+    # Supponiamo che il tuo modello si chiami 'net'
+    # Assicurati di averlo definito e inizializzato correttamente prima di utilizzare summary
+
+    input_features = 5
+
+    print(f'\n\n\t\t- Encoder Architecture:')
+    print(encoder)
+
+    ##########################################################
+                            # MLP
+    ##########################################################
+
     #Neuroni dei miei layer
     input_size = 1
     output_size = 1
-    hidden_layers = [128, 256]
+    hidden_layers = [4, 2]
 
     #Creo l'architettura:
-    net = Net(input_size, output_size,hidden_layers)
+    mlp = Net(input_size, output_size,hidden_layers)
     
     #Inizializzo i pesi
-    net.initialize_weights()
+    mlp.initialize_weights()
 
     # Sposto il modello sulla GPU
+    mlp.to(my_device)
+
+    print(f'\n\n\t\t- MLP Architecture:')
+    print(mlp)
+
+    ##################################################################################
+                                #Neural Netwoek
+    ##################################################################################
+
+    net = nn.Sequential(encoder,mlp)
+    
+    # Sposto il modello sulla GPU
     net.to(my_device)
+
+    #Stampo l'architettura:
+    print(f'\n\n\t\t- NN Architecture:')
+    print(net)
+
+    #################################################################
+
+                        #### TRAINING PHASE ####
+
+    #################################################################
 
     # Sposto i dati di addestramento sulla GPU
     data_X_train = data_X_train.to(my_device)
@@ -413,11 +446,7 @@ if __name__ == "__main__":
     data_X_val = data_X_val.to(my_device)
     data_y_val = data_y_val.to(my_device)
 
-    #### TRAINING PHASE ####
+    
     # training the network
-    bah = Net_training.prova(net, data_X_train, data_X_val, data_y_train, data_y_val, epochs=50, lr=0.01, minibatch_size=32, loss_function_choice="mse", optimizer_choice="adam")
+    NN_model = Net_training.training(net, data_X_train, data_X_val, data_y_train, data_y_val, n_epochs=500, lr=0.001, minibatch_size=64, loss_function_choice="mse", optimizer_choice="adam")
     
-    
-
-      
-   
