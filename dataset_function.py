@@ -125,7 +125,7 @@ def create_encoder_splits_unbalanced(X, train_frac, valid_frac, randomize=True):
 
     return X_train, X_val, X_test
 
-def normalize_input_data(X, mean=None, std=None, min_val=None, max_val=None):   
+def normalize_input_data(X, min_val=None, max_val=None):   
     # Adjust the range to -1 to 1
     if min_val is None:
             min_val = X.min()
