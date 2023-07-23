@@ -1,6 +1,8 @@
 import pandas as pd
 import torch
 import torch.nn as nn
+import argparse
+import yaml
 from dataset_function import *
 from encoder import *
 from MLP import *
@@ -10,37 +12,120 @@ from time import sleep
 
 torch.manual_seed(42)
 
+def parse_command_line_arguments():
+    """
+    Function required for using additional terminal commands necessary for selecting specific parameters needed for the correct execution of DCGAN.
+    The main commands are:
+
+        - --pathConfiguratorYaml: takes in input the yaml file path as a string (mandatory command)
+
+        - --config: takes in input "train" or "eval" for selecting the training or the evaluation phase, if not specified the default value is "train" (optional command).
+                    Choices: 
+                    - train ---> training phase
+                    - eval ---> evaluation evaluation
+
+        - --print: takes in input an integer parameter (0 or 1) which tell if you want to print some checks
+    """
+
+    #Creates an ArgumentParser object from the argparse library used for analyzing the passed arguments from the command line:
+    parser = argparse.ArgumentParser(description='Process some command line arguments.') 
+
+    #Add the arguments to the ArgumentParser object:
+    parser.add_argument('--pathConfiguratorYaml', type=str, required=True,
+                        help='Insert the path of Yaml file containing all the parameters of the project')
+    parser.add_argument('--config', type=str, default='train', choices=['train', 'eval'],
+                        help='You have to chose the training or evaluation configuration')
+    parser.add_argument('--print', type=int, default=1, choices=[1,0],
+                        help='You have to chose if you want to print some controls and checks')
+        
+   
+    args = parser.parse_args() #This line of code reads the arguments passed from the command line and compares them with the options defined using the 
+                                #add_argument method of the ArgumentParser object. parse_args returns a Namespace object containing the values of the
+                                #arguments specified by the user on the command line.
+    return args
+
+def yamlParser(path_yaml_file: str):  #takes in input the yaml file path
+    """
+    Function required for reading a YAML file and saving its content into a variable. The input will be passed via the terminal and will be the path
+    of the .yaml file.
+    """
+    
+    with open(path_yaml_file, "r") as stream: #.yaml file is opened in read mode and called "stream"
+        yaml_parser = yaml.safe_load(stream) #saves the contents of the file in a variable
+    return yaml_parser
+
+def load_hyperparams(pathConfiguratorYaml: str):
+    """
+    This function simplifies the access to the model hyperparameters values in the YAML file. In practice, the function loads and returns the 
+    hyperparameters specified in the YAML file. The function has only one input: the string of the absolute path of the file YAML.
+    """
+    
+    yaml_configurator = yamlParser(pathConfiguratorYaml) #takes in input the path of the YAML file. It returns a Namespace containing the key-value pairs
+                                                          #corresponding to the parameters specified in the file
+
+    #Each variable takes the value corresponding to the field specified in the Namespace:
+    dataroot = yaml_configurator["dataroot"]
+    reduce_dataset_path=yaml_configurator["reduce_dataset_path"]
+    
+
+    #The function returns all these variablesas a tuple, returning all the parameters as individual variables:
+    return dataroot,reduce_dataset_path
+
+
+################################################################################
+
+                                #MAIN CODE START
+
+################################################################################
+
+
 
 if __name__ == "__main__":
-
-                                    ### PREPROCESS DATASET ###
-    #Creo la cartella risultati se non esiste gia
-    #Caricamento dataframe da file .csv
-    filename = "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/AirQualityUCI.csv"
-    dataframe = pd.read_csv(filename, sep=";")
-    #print(dataframe.columns)
-
-
-    #Ridimensionamento dataset
-    dataset_reduced = dataset_reduction(dataframe,"NOx(GT)","PT08.S1(CO)","T","RH","PT08.S2(NMHC)","CO(GT)")
-    #print('Il dataset senza le eliminazioni è:\n ',dataset_reduced)
-    print('la dimensionalità è: ',dataset_reduced.shape)
-    #print(dataset_reduced.columns)
-    #sleep(120)
     
-    #Pulitura dataset ridotto
-    dataset_reduced = cleaning_dataset_function(dataset_reduced)
-    #print('Il dataset con le eliminazioni è:\n ',dataset_reduced)
-    print('la dimensionalità ridotta è: ',dataset_reduced.shape)
-    sleep(5)
+    ### Terminal ###
+    args = parse_command_line_arguments() #extracts the arguments from the command line and saves them in the "args" object
+    
+    ### Yaml file ###
+    pathConfiguratorYaml = args.pathConfiguratorYaml #extracts the path of the YAML configuration file from the command line and saves it in a variable
+    #We assign the values returned by the function, that is the values in the tuple, to the respective variables
+    dataroot,reduce_dataset_path = load_hyperparams(pathConfiguratorYaml)
 
-    #Salvo il dataset ridotto
-    create_file_csv(dataset_reduced,"C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced.csv")
+
+##########################################################################################                                    
+                                    
+                        ### LOAD AND PREPROCESS DATASET ###
+
+##########################################################################################
+    #Loading dataframe from .csv file
+    dataframe = pd.read_csv(dataroot, sep=";") #The .csv file uses ; as a separator instead of space
+    
+    #Resizing dataset from original one (I take only 6 columns)
+    dataset_reduced = dataset_reduction(dataframe,"NOx(GT)","PT08.S1(CO)","T","RH","PT08.S2(NMHC)","CO(GT)")
+    
+    #Print
+    if args.print == 1:
+        print('The dimensionality of the reduced and dirty datset is:',dataset_reduced.shape)
+    
+    #Cleaning the reduced dataset
+    dataset_reduced = cleaning_dataset_function(dataset_reduced)
+
+    #Print
+    if args.print == 1:
+        print('The dimensionality of the reduced datset is: ',dataset_reduced.shape)
+        print('Some rows of the reduced dataset: \n',dataset_reduced.head(5))
+        sleep(10)
+
+    #Save the reduced dataset
+    create_file_csv(dataset_reduced,reduce_dataset_path)
     
     #Device configuration
     my_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-                        ### DEFINIZIONE DELLA MLP ###
+##########################################################################################                                    
+                                    
+                        ### TRAINING, VALIDATION AND TEST SETS ###
+
+##########################################################################################
 
     #Carichiamo i dati dal nuovo file .csv e dividiamo in input e target
     data_X, data_y = load_data_from_file("C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced.csv")
@@ -134,7 +219,14 @@ if __name__ == "__main__":
     # training the network
     Net_training.training(net, data_X_train, data_X_val, data_y_train, data_y_val, n_epochs=400, lr=0.001, minibatch_size=64, loss_function_choice="mse", optimizer_choice="sgd")
     
-    
+    #########################
+
+        #Eval phase
+
+    ##########################
+    #Directory per salvare le immagini
+    createDirectory('D:/Results/Images')
+
     #Combine input and output tensors
     test_dataset = torch.Tensor(data_X_test)
     print("Dimensioni del tensore Test dataset:", len(test_dataset))
@@ -145,25 +237,44 @@ if __name__ == "__main__":
     print("Dimensioni del tensore output:", outputs.shape)
 
     #Stampo la PDFY
-    Net_training.plot_pdfy(outputs)
+    Net_training.plot_pdfy(outputs, 'D:/Results/Images/pfdy.png')
 
     ##### Genero samples da GMM #####
 
-    # Example usage:
-    mixing_parameters = [91,35,51,55,26,58,82,86,44,89,100,27,6,85,47,18,37,98,65,32,13,8,21,54,74,64,2,78,1,95,29,88]  # Mixing parameters of Gaussian components
-    means = [0,49,50,8,68,69,23,34,28,41,56,77,88,16,95,31,7,96,19,87,98,58,89,37,18,12,14,43,25,3,10,60]                 # Means of Gaussian components
-    std_deviations = [26,0,87,74,85,56,14,75,98,65,82,77,24,46,67,53,55,18,31,63,71,83,78,99,10,72,40,50,20,39,37,21]          # Standard deviations of Gaussian components
-    n_samples = 5000                    # Number of new artificial samples to generate
+    # PARAMETERS:
+    # Esempio di parametri per una GMM con 32 gaussiane
+    num_gaussians = 32
+    # Probabilità di mescolamento (deve sommare a 1 dopo essere normalizzata)
+    mixing_parameters = np.random.rand(num_gaussians)
+    mixing_parameters /= np.sum(mixing_parameters)
+    # Medie delle gaussiane
+    means = np.random.randint(0, 100, num_gaussians)
+    # Deviazioni standard delle gaussiane
+    std_deviations = np.random.randint(1, 30, num_gaussians)
+    # Number of new artificial samples to generate
+    n_samples = 50000
+
+    #Salvataggio parametri:
+    # Salvataggio dei parametri in un file .txt nel percorso specificato
+    file_path = "D:/Results/Images/saved_GMM_parameters.txt"
+    # Combiniamo i parametri in un array 2D per la scrittura
+    # Il primo valore di ogni riga rappresenta la gaussiana corrispondente
+    parameters = np.column_stack((np.arange(num_gaussians), mixing_parameters, means, std_deviations))
+    # Scrive i parametri nel file .txt
+    np.savetxt(file_path, parameters, header="Gaussian_Index Mixing_Parameter Mean Standard_Deviation", fmt='%d %.6f %.6f %.6f')                  
 
     #Genero:
     new_samples = generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples)
     #Print the generated samples
     print(new_samples)
     #Normalizzo:
-    new_samples = normalize_input_data(new_samples)
+    new_samples, _, _ = normalize_input_data(new_samples)
     print(new_samples)
+    #Converto in float
+    new_samples = new_samples.to(torch.float)
+
     #Dataloader
-    dataloader_artificial = DataLoader(new_samples, batch_size=8, shuffle=False, drop_last=False)
+    dataloader_artificial = DataLoader(TensorDataset(new_samples), batch_size=8, shuffle=False, drop_last=False)
 
     ###### TESTO ARTIFICIAL INPUT ######
 
@@ -175,7 +286,7 @@ if __name__ == "__main__":
     outputs_artificial = Net_training.predict(trained_mlp, new_samples)
 
     #Stampo la PDFY artificiale
-    Net_training.plot_pdfy(outputs_artificial)
+    Net_training.plot_pdfy(outputs_artificial, 'D:/Results/Images/ARTIFICIAL_pfdy.png')
 
 
 

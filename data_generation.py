@@ -21,6 +21,7 @@ def generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, 
         samples.append(sample)
     
     # Convert samples list to PyTorch tensor
+    samples = np.array(samples).reshape(n_samples, 1)
     samples_tensor = torch.tensor(samples)
 
     return samples_tensor

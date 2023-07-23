@@ -43,9 +43,6 @@ class Net(nn.Module):
                 nn.init.normal_(layer.weight.data, 0.0, 0.02)
                 nn.init.constant_(layer.bias.data, 0.0)
 
-
-
-
 class Net_training(torch.nn.Module):
     def __init__(self):
         super(Net_training, self).__init__()
@@ -300,7 +297,7 @@ class Net_training(torch.nn.Module):
 
         return net_train_losses,net_val_losses
     
-    def plot_pdfy(output_data):
+    def plot_pdfy(output_data,path:str):
         # Move the output_data tensor from GPU to CPU
         output_data = output_data.cpu().numpy()
         # Increase the number of bins for a smoother histogram
@@ -316,6 +313,12 @@ class Net_training(torch.nn.Module):
         plt.legend()
         plt.title('Probability Density Function (PDF) of Output Data')
         plt.grid(True)
+        
+
+         # Salva l'immagine nel percorso specificato
+        plt.savefig(path)
+    
+        # Mostra il grafico
         plt.show()
 
         

@@ -1,0 +1,17 @@
+########################################################################################################################################
+#YAML CONFIGURATION FILE:
+
+#This file lists all the hyperparameters, parameters, and paths necessary for the proper functioning of the network. These will
+#be divided into sections for better readability.
+########################################################################################################################################
+
+#################################
+#       HYPERPARAMETERS:
+#################################
+#################################
+#            PATHS:
+#################################
+dataroot:
+    "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/AirQualityUCI.csv"
+reduce_dataset_path:
+    "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced.csv"
