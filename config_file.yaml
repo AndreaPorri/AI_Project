@@ -5,13 +5,86 @@
 #be divided into sections for better readability.
 ########################################################################################################################################
 
-#################################
-#       HYPERPARAMETERS:
-#################################
-#################################
-#            PATHS:
-#################################
+                                #################################
+                                #        DATASET PATH
+                                #################################
 dataroot:
     "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/AirQualityUCI.csv"
+results_path:
+    'D:/Results'             
+               
+            ###########################################################################
+
+            #                       FILE:   autoencoder.py
+
+            ###########################################################################
+
+                                #################################
+                                #            PATHS:
+                                #################################
+reduce_dataset_autoencoder_path:
+    "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced_Autoencoder.csv"
+path_pth_autoencoder:
+    "D:/Results/Autoencoder/autoencoder_lastEpoch.pth"
+path_txt_autoencoder:
+    "D:/Results/Autoencoder/autoencoder_lastEpoch.txt"
+image_loss_path:
+    "D:/Results/Autoencoder/loss_plot.png"        
+
+                                #################################
+                                #       HYPERPARAMETERS:
+                                #################################
+loss_function: #Mean Square Error("mse") or Mean Absolute Error("mae")
+    "mse"
+optimizer: #Adam("adam") or Stochastic Gradient Descent("sgd") or Root Mean Square Propagation("rmsprop")
+    "adam"
+n_epochs:
+    300
+lr: #Learning rate
+    0.005
+batch_size:
+    128
+                                
+            ############################################################################
+
+            #                          FILE:   main.py
+
+            ############################################################################
+
+                                #################################
+                                #            PATHS:
+                                #################################
 reduce_dataset_path:
     "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced.csv"
+path_pth_net:
+    "D:/Results/NET/net_lastEpoch.pth"
+path_txt_net:
+    "D:/Results/NET/net_lastEpoch.txt"
+result_path_net:
+    "D:/Results/NET/loss_plot.png" 
+                                
+                                #################################
+                                #       HYPERPARAMETERS:
+                                #################################
+epochs_net:
+    400
+learning_rate_net:
+    0.001
+mini_batch_size_net:
+    64
+loss_function_net: #Mean Square Error("mse") or Mean Absolute Error("mae")
+    "mse"
+optimizer_net: #Adam("adam") or Stochastic Gradient Descent("sgd") or Root Mean Square Propagation("rmsprop")
+    "sgd"
+
+                                #################################
+                                #            MLP
+                                #################################
+input_size_mlp:
+    1
+output_size_mlp:
+    1
+hidden_layers_mlp:
+    [4, 2]
+
+

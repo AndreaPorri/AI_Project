@@ -31,7 +31,7 @@ import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
-from dataset_function import *
+from functions import *
 import argparse
 import yaml
 from tqdm import trange
@@ -89,11 +89,15 @@ def load_hyperparams(pathConfiguratorYaml: str):
                                                           #corresponding to the parameters specified in the file
 
     #Each variable takes the value corresponding to the field specified in the Namespace:
+    #DATASET/RESULT DIRECTORY
     dataroot = yaml_configurator['dataroot']
+    results_path = yaml_configurator['results_path']
+    #PATH
     reduce_dataset_autoencoder_path = yaml_configurator['reduce_dataset_autoencoder_path']
     path_pth_autoencoder = yaml_configurator['path_pth_autoencoder']
     path_txt_autoencoder = yaml_configurator['path_txt_autoencoder']
-    result_path_autoencoder = yaml_configurator['result_path_autoencoder']
+    image_loss_path = yaml_configurator['image_loss_path']
+    #HYPERPARAMETER
     loss_function = yaml_configurator['loss_function']
     optimizer = yaml_configurator['optimizer']
     n_epochs = yaml_configurator['n_epochs']
@@ -101,7 +105,7 @@ def load_hyperparams(pathConfiguratorYaml: str):
     batch_size = yaml_configurator['batch_size']
 
     #The function returns all these variablesas a tuple, returning all the parameters as individual variables:
-    return dataroot,reduce_dataset_autoencoder_path,path_pth_autoencoder,path_txt_autoencoder,result_path_autoencoder,loss_function,optimizer,n_epochs,lr,batch_size
+    return dataroot,results_path,reduce_dataset_autoencoder_path,path_pth_autoencoder,path_txt_autoencoder,image_loss_path,loss_function,optimizer,n_epochs,lr,batch_size
 
             
             
@@ -206,7 +210,7 @@ class Autoencoder(nn.Module):
 
         return avg_val_loss
       
-    def training(model, input_train_tensor, input_val_tensor, result_path, path_pth, path_txt, print_info, loss_function_choice, optimizer_choice, n_epochs, lr, batch_size): #Training of the autoencoder
+    def training(model, input_train_tensor, input_val_tensor, results_path, path_pth, path_txt, image_loss_path, print_info, loss_function_choice, optimizer_choice, n_epochs, lr, batch_size): #Training of the autoencoder
         '''
         Training the autoencoder.
 
@@ -214,9 +218,10 @@ class Autoencoder(nn.Module):
             model: the autoencoder object of that class.
             input_train_tensor: input tensor for training.
             input_val_tensor: input tensor for validation.
-            result_path: path where to save the loss trend image on training and validation.
+            result_path: path where to save results.
             path_pth: path where to save the characteristics and parameters of the network.
             path_txt: path to a text file to save some network characteristics.
+            image_loss_path: path to save the loss trend image.
             print_info: identifier to make further prints.
             loss_function_choice: identifier of the loss we want to select.
             optimizer_choice: identifier of the optimizer we want to select.
@@ -316,8 +321,9 @@ class Autoencoder(nn.Module):
         model.train()
 
         #Create the directory for theAutoencoder results
-        createDirectory('D:/Results')
-        createDirectory('D:/Results/Autoencoder')
+        #results_path ='D:/Results'
+        createDirectory(results_path)
+        createDirectory(f'{results_path}/Autoencoder')
 
         #Initialization of the list of training and validation losses of the all epochs
         net_train_losses = [] 
@@ -329,6 +335,7 @@ class Autoencoder(nn.Module):
             #Initializes the loss of the training phase for the current epoch
             epoch_loss_train = 0.0
 
+            ### TRAIN ###            
             ### LOOP ON MINI-BATCHES ###
             for idx_batch, X_minibatch in enumerate(dataloader_train):
                 #Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
@@ -363,7 +370,7 @@ class Autoencoder(nn.Module):
             #Save the net losses of each batch within the lists defined earlier
             net_train_losses.append(epoch_loss_train)
 
-
+            ### VALIDATION ###
             #Validation of the epoch
             loss_valid = Autoencoder.validate(model, dataloader_val, loss_function)
 
@@ -374,7 +381,7 @@ class Autoencoder(nn.Module):
         save_net(model, epoch, epoch_loss_train, loss_valid, path_pth, path_txt)
 
         #### PLOT OF TRAINING AND VALIDATION LOSSES ####
-        plot_loss(n_epochs, net_train_losses, net_val_losses, result_path)
+        plot_loss(n_epochs, net_train_losses, net_val_losses, image_loss_path)
 
         return net_train_losses,net_val_losses
 
@@ -387,7 +394,7 @@ if __name__ == '__main__':
     ### Yaml file ###
     pathConfiguratorYaml = args.pathConfiguratorYaml #extracts the path of the YAML configuration file from the command line and saves it in a variable
     #We assign the values returned by the function, that is the values in the tuple, to the respective variables
-    dataroot, reduce_dataset_autoencoder_path, path_pth_autoencoder, path_txt_autoencoder, result_path_autoencoder, loss_function, optimizer, n_epochs, lr, batch_size = load_hyperparams(pathConfiguratorYaml)
+    dataroot,results_path,reduce_dataset_autoencoder_path,path_pth_autoencoder,path_txt_autoencoder,image_loss_path,loss_function,optimizer,n_epochs,lr,batch_size = load_hyperparams(pathConfiguratorYaml)
 
     
     ##########################################################################################                                    
@@ -431,7 +438,7 @@ if __name__ == '__main__':
     data = load_csv_file(reduce_dataset_autoencoder_path)
 
     #Splitting data in training, validation e test sets(which has 0 samples)
-    data_X_train, data_X_val, _ = create_encoder_splits_unbalanced(data, 0.85, 0.15)
+    data_X_train, data_X_val, _ = create_autoencoder_splits_unbalanced(data, 0.85, 0.15)
        
     ##########################################################################################                                    
                                         
@@ -466,4 +473,4 @@ if __name__ == '__main__':
 
     #### TRAINING LOOP ####
     #Training the network
-    Autoencoder.training(autoencoder, data_X_train, data_X_val, result_path_autoencoder, path_pth_autoencoder, path_txt_autoencoder, args.print_info, loss_function, optimizer, n_epochs, lr, batch_size)
+    Autoencoder.training(autoencoder, data_X_train, data_X_val, results_path, path_pth_autoencoder, path_txt_autoencoder, image_loss_path, args.print_info, loss_function, optimizer, n_epochs, lr, batch_size)
