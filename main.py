@@ -18,7 +18,7 @@ from data_generation import *
 from time import sleep
 
 #Let's put a seed (not necessary)
-torch.manual_seed(42)
+#torch.manual_seed(42)
 
 ### TERMINAL ###
 def parse_command_line_arguments():
@@ -34,19 +34,32 @@ def parse_command_line_arguments():
                     - eval ---> evaluation evaluation
 
         - --print_info: takes in input an integer parameter (0 or 1) which tell if you want to print some checks
+    
+        - --dimensional_red_choice: takes in input "autoencoder" or "PCA" to choose the dimensional reduction method (optional command).
+                    Choices:
+                    - autoencoder ---> Autoencoder method
+                    - PCA ---> Principal Component Analysis method
+        - --aut_model_sel: takes in input "net" or "encoder_MLP" to choose the architecture which use autoencoder method (optional command).
+                     Choices:
+                    - net ---> encoder + mlp training
+                    - encoder_MLP ---> input pass into the encoder and after put it into mlp for the training
     """
 
     #Creates an ArgumentParser object from the argparse library used for analyzing the passed arguments from the command line:
     parser = argparse.ArgumentParser(description='Process some command line arguments.') 
 
     #Add the arguments to the ArgumentParser object:
-    parser.add_argument('--pathConfiguratorYaml', type=str, required=True,
+    parser.add_argument('--pathConfiguratorYaml', type=str, default='config_file.yaml',
                         help='Insert the path of Yaml file containing all the parameters of the project')
     parser.add_argument('--config', type=str, default='train', choices=['train', 'eval'],
                         help='You have to chose the training or evaluation configuration')
     parser.add_argument('--print_info', type=str, default='0', choices=['1','0'],
                         help='You have to chose if you want to print some controls and checks')
-        
+    parser.add_argument('--dimensional_red_choice', type=str, default='autoencoder', choices=['autoencoder', 'PCA'],
+                        help='You have to choose the dimensional reduction method')
+    parser.add_argument('--aut_model_sel', type=str, default='encoder_MLP', choices=['net', 'encoder_MLP'],
+                        help='You have to choose the dimensional reduction method')
+            
    
     args = parser.parse_args() #This line of code reads the arguments passed from the command line and compares them with the options defined using the 
                                 #add_argument method of the ArgumentParser object. parse_args returns a Namespace object containing the values of the
@@ -128,25 +141,24 @@ if __name__ == "__main__":
     dataframe = pd.read_csv(dataroot, sep=";") #The .csv file uses ; as a separator instead of space
     
     #Resizing dataset from original one (I take only 6 columns)
-    dataset_reduced = dataset_reduction(dataframe,"NOx(GT)","PT08.S1(CO)","T","RH","PT08.S2(NMHC)","CO(GT)")
-    
-    #Print
-    if args.print_info == '1':
-        print('The dimensionality of the reduced and dirty datset is:',dataset_reduced.shape)
-    
+    dataset_reduced_dirty = dataset_reduction(dataframe,"NOx(GT)","PT08.S1(CO)","T","RH","PT08.S2(NMHC)","CO(GT)")
+          
     #Cleaning the reduced dataset
-    dataset_reduced = cleaning_dataset_function(dataset_reduced)
+    dataset_reduced = cleaning_dataset_function(dataset_reduced_dirty)
 
     #Print
     if args.print_info == '1':
+        #Print of the shape of the dataset and his data
+        print('The dimensionality of the reduced and dirty datset is:',dataset_reduced_dirty.shape)
         print('The dimensionality of the reduced datset is: ',dataset_reduced.shape)
-        print('Some rows of the reduced dataset: \n',dataset_reduced.head(5))
-        sleep(10)
+        sleep(4)
+        print('\n\nSome rows of the reduced dataset: \n',dataset_reduced.head(5))
+        sleep(8)
 
-    #Save the reduced dataset
+    ### SAVE REDUCED DATASET ###
     create_file_csv(dataset_reduced,reduce_dataset_path)
     
-    #Device configuration
+    ### DEVICE ###
     my_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     ##########################################################################################                                    
@@ -158,32 +170,15 @@ if __name__ == "__main__":
     #Load the data from the new CSV file and split into input and target
     data_X, data_y = load_data_from_file(reduce_dataset_path)
     
-    #Splitting and normalize data in training, validation e test sets
+    ### CREATE THE SETS ###
     data_X_train, data_y_train, data_X_val, data_y_val, data_X_test, data_y_test = create_splits_unbalanced(data_X, data_y, 0.7, 0.15)
+
 
     ##########################################################################################                                    
                                         
                             ### INITIALIZATION OF THE NETWORK ###
 
     ##########################################################################################
-
-                                ###############################
-                                        ### ENCODER ###
-                                ###############################
-    #Loading the previously trained and saved autoencoder model
-    autoencoder = Autoencoder() #Create the autoencoder object
-    autoencoder.load_state_dict(torch.load(path_pth_autoencoder)) #Load the model onto that object
-
-    #We define a new network with only the 5-3-1 portion, which is the encoding part used for dimensionality reduction.
-    encoder = autoencoder.encoder
-    encoder.to(my_device) #Put the network onto the selected device.
-
-    #Print
-    if args.print_info == '1':
-        print(f'\n\n\t\t- Encoder Architecture:')
-        print(encoder)
-        sleep(10)
-
 
                                 ###############################
                                          ### MLP ###
@@ -198,79 +193,203 @@ if __name__ == "__main__":
     #Move the model to the selected device
     mlp.to(my_device)
 
+    ##################################################################################
+                                    #Data
+    ##################################################################################
+
+    ### MAX AND MIN OF THE TARGET ###
+    min_target = torch.min(data_y)
+    max_target = torch.max(data_y)    
+    
+    ### PREPROCESS INPUT AND TARGET ###
+    #Normalization data
+    data_X_train, mean_train, std_train = real_norm_input(data_X_train)
+    data_X_val, _, _ = real_norm_input(data_X_val, mean_train, std_train)
+    
+    #Reduction to [0,1] the output
+    data_y_train = restrict_output_data(data_y_train, min_target, max_target)
+    data_y_val = restrict_output_data(data_y_val, min_target, max_target)
+    data_y_test = restrict_output_data(data_y_test, min_target, max_target)
+
     #Print
     if args.print_info == '1':
-        print(f'\n\n\t\t- MLP Architecture:')
-        print(mlp)
+        #Print of mean and STD of the various set:
+        print(f'\n\n\nMEAN-STD TRAIN: {torch.mean(data_y_train)}-{torch.std(data_y_train)}')
+        print(f'MEAN-STD VAL: {torch.mean(data_y_val)}-{torch.std(data_y_val)}')
+        print(f'MEAN-STD TEST: {torch.mean(data_y_test)}-{torch.std(data_y_test)}')
+        print('\n\n\n')
         sleep(10)
 
-    ##################################################################################
-                                #Neural Netwoek
-    ##################################################################################
-
-    #Make the composition of the two previously defined networks and obtain the starting architecture
-    net = nn.Sequential(encoder,mlp)
+    ### PUT DATA ON THE DEVICE ###
+    #Move the training data to the selected device
+    data_X_train = data_X_train.to(my_device)
+    data_y_train = data_y_train.to(my_device)
+    data_X_val = data_X_val.to(my_device)
+    data_y_val = data_y_val.to(my_device)
+    data_X_test = data_X_test.to(my_device)
+    data_y_test = data_y_test.to(my_device)
     
-    #Move the model to the selected device 
-    net.to(my_device)
+    
+    #DIMESIONALITY REDUCTION ENCODER
+    if args.dimensional_red_choice == 'autoencoder':
+                                ###############################
+                                        ### ENCODER ###
+                                ###############################
+        #Loading the previously trained and saved autoencoder model
+        autoencoder = Autoencoder() #Create the autoencoder object
+        autoencoder.load_state_dict(torch.load(path_pth_autoencoder)) #Load the model onto that object
 
-    #Print
-    if args.print_info == '1':
-        print(f'\n\n\t\t- Network Architecture:')
-        print(net)
 
+        #ENCODER - MLP NETWORK
+        if args.aut_model_sel == 'net':
+            #We define a new network with only the 5-3-1 portion, which is the encoding part used for dimensionality reduction.
+            encoder = autoencoder.encoder
+            encoder.to(my_device) #Put the network onto the selected device.         
+            
+            ##################################################################################
+                                        #Neural Netwoek
+            ##################################################################################
+
+            #Make the composition of the two previously defined networks and obtain the starting architecture
+            net = nn.Sequential(encoder,mlp)
+        
+            #Move the model to the selected device 
+            net.to(my_device)
+
+            #Print
+            if args.print_info == '1':
+                print(f'\n\n\t\t- Network Architecture:')
+                print(net)
+
+    
+        #ENCODER PREDICTION + MLP
+        if args.aut_model_sel == 'encoder_MLP':
+            #Apply the prediction of the encoder on the input data
+            data_X_train = autoencoder.predict_encoder(data_X_train).detach()
+            data_X_val = autoencoder.predict_encoder(data_X_val).detach()
+
+            #Print
+            if args.print_info == '1':
+
+                #Architecture
+                print(f'\n\n\t\t- Encoder Architecture:')
+                print(autoencoder.encoder)
+                print(f'\n\n\t\t- MLP Architecture:')
+                print(mlp)
+                sleep(10)
+                
+                ### PLOT OF THE NEW DATA ###
+                # Convert x_values and y_values to numpy arrays
+                x_values = data_X_train.clone().detach().cpu().numpy()
+                y_values = data_y_train.clone().detach().cpu().numpy()
+                
+                #plot
+                plt.figure(figsize=(8, 6))
+                plt.scatter(x_values, y_values, s=50, marker='o', label='Points')
+                plt.xlabel('X-axis')
+                plt.ylabel('Y-axis')
+                plt.title('Plot of our data')
+                plt.grid(True)
+                plt.legend()
+                plt.savefig(f'{results_path}/NET/new_input_data_encoded_MLP.png')
+                plt.show()
+            #Define the architecture for training
+            net = mlp
+            
+
+    #DIMESIONALITY REDUCTION PCA
+    if args.dimensional_red_choice == 'PCA':
+            
+            #Take the MLP part as the whole Network
+            net = mlp
+
+            #Put the data in CPU
+            data_X_train_cpu = data_X_train.cpu()
+            data_X_val_val = data_X_val.cpu()
+            #Make the dimensional reduction with PCA
+            data_X_train = PCA_fun(data_X_train_cpu, args.print_info, results_path).to(my_device)
+            data_X_val = PCA_fun(data_X_val_val, args.print_info, results_path).to(my_device)
+
+            #Print
+            if args.print_info == '1':
+                #Architecture
+                print(f'\n\n\t\t- MLP Architecture:')
+                print(mlp)
+                sleep(10)
+
+                ### PLOT OF THE NEW DATA ###
+                # Convert x_values and y_values to numpy arrays
+                x_values = data_X_train.clone().detach().cpu().numpy()
+                y_values = data_y_train.clone().detach().cpu().numpy()
+                
+                #plot
+                plt.figure(figsize=(8, 6))
+                plt.scatter(x_values, y_values, s=50, marker='o', label='Points')
+                plt.xlabel('X-axis')
+                plt.ylabel('Y-axis')
+                plt.title('Plot of our PCA data')
+                plt.grid(True)
+                plt.legend()
+                plt.savefig(f'{results_path}/NET/new_input_data_encoded_MLP.png')
+                plt.show()
+
+    
     #################################################################
 
                         #### TRAINING PHASE ####
 
     #################################################################
-    if args.config == 'train':
-        #Move the training data to the selected device
-        data_X_train = data_X_train.to(my_device)
-        data_y_train = data_y_train.to(my_device)
-        data_X_val = data_X_val.to(my_device)
-        data_y_val = data_y_val.to(my_device)
-        data_X_test = data_X_test.to(my_device)
-        data_y_test = data_y_test.to(my_device)
+    
+    #### TRAINING LOOP ####
+    #Training the network
+    Net_training.training(net, data_X_train, data_X_val, data_y_train, data_y_val, path_pth_net, path_txt_net, results_path, result_path_net, args.print_info, epochs_net, learning_rate_net, mini_batch_size_net, loss_function_net, optimizer_net, min_target, max_target)
+    
+    #########################
 
-        #### TRAINING LOOP ####
-        #Training the network
-        Net_training.training(net, data_X_train, data_X_val, data_y_train, data_y_val, path_pth_net, path_txt_net, results_path, result_path_net, args.print_info, epochs_net, learning_rate_net, mini_batch_size_net, loss_function_net, optimizer_net)
+        #Eval phase
+
+    ##########################
+    if args.config == 'eval':
         
-        #########################
+        #Load net
+        net.load_state_dict(torch.load("D:/Results/NET/net_lastEpoch.pth"))
 
-            #Eval phase
-
-        ##########################
         #Directory per salvare le immagini
         createDirectory(results_path)
 
         #Combine input and output tensors
         test_dataset = torch.Tensor(data_X_test)
-        print("Dimensioni del tensore Test dataset:", len(test_dataset))
+        #print("Dimensioni del tensore Test dataset:", len(test_dataset))
         # Dataloader
         dataloader_test = DataLoader(test_dataset, batch_size=8, shuffle=False, drop_last=False)
         #Stampa della pdfy della mia NN
-        outputs = Net_training.predict(net, dataloader_test)
-        print("Dimensioni del tensore output:", outputs.shape)
+        outputs_test = Net_training.predict(net, dataloader_test)
+        #print("Dimensioni del tensore output:", outputs_test.shape)
+
+        #Calcolo mean and std
+        mean_value_test = torch.mean(outputs_test)
+        std_value_test = torch.std(outputs_test)
+
+        print(f'MEAN E STD:{mean_value_test},{std_value_test}')
 
         #Stampo la PDFY
-        Net_training.plot_pdfy(outputs, 'D:/Results/NET/pfdy.png')
+        #Net_training.plot_pdfy_prova(outputs_test, 'D:/Results/NET/pfdy.png')
 
         ##### Genero samples da GMM #####
 
         # PARAMETERS:
-        # Esempio di parametri per una GMM con 32 gaussiane
+        # Esempio di parametri per una GMM con n gaussiane
         num_gaussians = 32
         # Probabilità di mescolamento (deve sommare a 1 dopo essere normalizzata)
         mixing_parameters = np.random.rand(num_gaussians)
         mixing_parameters /= np.sum(mixing_parameters)
         # Medie delle gaussiane
-        means = np.random.randint(0, 100, num_gaussians)
+        means = np.random.uniform(0.189, 0.191, num_gaussians)
         # Deviazioni standard delle gaussiane
-        std_deviations = np.random.randint(1, 30, num_gaussians)
+        std_deviations = np.random.uniform(1e-10, 1e-2, num_gaussians)
+        #std_deviations = np.full(num_gaussians, )
         # Number of new artificial samples to generate
-        n_samples = 100000
+        n_samples = 10000
 
         #Salvataggio parametri:
         # Salvataggio dei parametri in un file .txt nel percorso specificato
@@ -284,12 +403,13 @@ if __name__ == "__main__":
         #Genero:
         new_samples = generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples)
         #Print the generated samples
-        print(new_samples)
-        #Normalizzo:
-        new_samples = normalize_input_data(new_samples)
-        print(new_samples)
+        #print(new_samples)
         #Converto in float
         new_samples = new_samples.to(torch.float)
+        #Normalizzo:
+        new_samples = normalize_input_data(new_samples)
+        #print(new_samples)
+        
 
         #Dataloader
         dataloader_artificial = DataLoader(TensorDataset(new_samples), batch_size=8, shuffle=False, drop_last=False)
@@ -302,9 +422,94 @@ if __name__ == "__main__":
 
         #Vado in inferenza
         outputs_artificial = Net_training.predict(trained_mlp, new_samples)
+        print("Dimensioni del tensore outputs_artificial:", outputs_artificial.shape)
 
+        
+        
+        
+        # Creating plot
+        # Converti i tensori PyTorch in liste
+        data_test = outputs_test.cpu().tolist()
+        data_artificial = outputs_artificial.cpu().tolist()
+
+        # Crea un DataFrame di pandas con colonne nominate
+        df_test = pd.DataFrame(data_test, columns=['Test'])
+        df_artificial = pd.DataFrame(data_artificial, columns=['Artificial'])
+        # Stampa i DataFrame
+        print("DataFrame da outputs_test_plot:")
+        print(df_test.shape)
+
+        print("\nDataFrame da outputs_artificial_plot:")
+        print(df_artificial.shape)
+
+        #selection
+        test = df_test.loc[:, 'Test'].values
+        artific = df_artificial.loc[:, 'Artificial'].values
+
+        # Creazione del plot box
+        plt.figure(figsize=(8, 6))
+        plt.boxplot([test, artific], labels=['Test', 'Artificial'],meanline=True)
+        plt.title('Box Plot di due set di dati')
+        plt.xlabel('Set di dati')
+        plt.ylabel('Valore')
+        plt.grid(True)
+        plt.show()
+
+        #Calcolo mean and std
+        mean_value_art = torch.mean(outputs_artificial)
+        std_value_art = torch.std(outputs_artificial)
+
+        
+        
+        
+        
+        ################## RIMOZIONE #############
+        # Calcola il primo quartile (Q1) e il terzo quartile (Q3)
+        Q1 = np.percentile(df_artificial.loc[:, 'Artificial'].values, 25)
+        Q3 = np.percentile(df_artificial.loc[:, 'Artificial'].values, 75)
+
+        
+        # Calcola l'IQR
+        IQR = Q3 - Q1
+
+        # Definisci gli intervalli per gli outlier
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        print("Lower Bound:", lower_bound)
+        print("Upper Bound:", upper_bound)
+        print("Min value:", df_artificial.loc[:, 'Artificial'].values.min())
+        print("Max value:", df_artificial.loc[:, 'Artificial'].values.max())
+        
+        #Condition
+        condition = (df_artificial['Artificial'] >= lower_bound) & (df_artificial['Artificial'] <= upper_bound)
+
+        # Filtra gli outlier
+        filtered_ARTIFICIAL_data = df_artificial[condition]
+        
+        #Rifaccio
+        artific_fil = filtered_ARTIFICIAL_data.loc[:, 'Artificial'].values
+        print("\nDataFrame shape filtered:")
+        print(filtered_ARTIFICIAL_data.shape)
+        print(len(artific_fil))
+
+        # Creazione del plot box
+        plt.figure(figsize=(8, 6))
+        plt.boxplot([test, artific_fil], labels=['Test', 'Artificial'],meanline=True)
+        plt.title('Box Plot di due set di dati')
+        plt.xlabel('Set di dati')
+        plt.ylabel('Valore')
+        plt.grid(True)
+        plt.show()
+
+        #Saves
+        #Write a .txt file to the specified path and writes information regarding the epoch and the loss to which
+        #the best trained net belongs
+        with open('D:/Results/NET/artificial_info.txt', "w") as f:
+            print(f"Info net:\n\n\tMEAN VALIDATION:\t{mean_value_art}\n\n\tSTD VALIDATION:\t{std_value_art}", file=f)
+            
         #Stampo la PDFY artificiale
-        Net_training.plot_pdfy(outputs_artificial, 'D:/Results/NET/ARTIFICIAL_pfdy.png')
+        #Net_training.plot_pdfy_prova(outputs_artificial, 'D:/Results/NET/ARTIFICIAL_pfdy.png')
 
 
 

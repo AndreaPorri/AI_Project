@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
@@ -103,7 +105,7 @@ class Net_training(torch.nn.Module):
 
         return torch.cat(outputs, dim=0)
 
-    def validate(net, dataloader_val, criterion):
+    def validate(net, dataloader_val, criterion, MIN, MAX):
         '''
         Validate the neural network.
 
@@ -118,6 +120,7 @@ class Net_training(torch.nn.Module):
         #Initialize device and avarage loss
         device = next(net.parameters()).device
         val_loss = 0.0
+        outputs = []
 
         #Evaluation mode
         with torch.no_grad():
@@ -127,24 +130,35 @@ class Net_training(torch.nn.Module):
 
             #Loop on mini-batch
             for X_val_minibatch, y_val_minibatch in dataloader_val:
+
+                #Conversion double to float
+                X_val_minibatch = X_val_minibatch.float()
+
                 #Mini-batch loading of inputs and outputs onto the selected device
                 X_val_minibatch = X_val_minibatch.to(device)
                 y_val_minibatch = y_val_minibatch.to(device)
 
                 #Predictions
                 output = net(X_val_minibatch)
+
+                '''#Convert the [0,1] output in real output
+                output = output * (MAX - MIN) + MIN'''
+
                 #Calculate the losses of the minibatch
                 loss = criterion(output, y_val_minibatch)
 
                 #Accumulate the loss
                 val_loss += loss.item()
 
+                #Save outputs
+                outputs.append(output)
+
         #Calculate the average validation loss
         avg_val_loss = val_loss / len(dataloader_val)
 
-        return avg_val_loss
+        return avg_val_loss, outputs
     
-    def training(net, X_train, X_val, y_train, y_val, path_pth, path_txt, results_path, result_path_net, print_info, n_epochs, lr, minibatch_size, loss_function_choice, optimizer_choice):
+    def training(net, X_train, X_val, y_train, y_val, path_pth, path_txt, results_path, result_path_net, print_info, n_epochs, lr, minibatch_size, loss_function_choice, optimizer_choice, MIN, MAX):
         """
         Train a neural network for multiple epochs.
 
@@ -171,16 +185,18 @@ class Net_training(torch.nn.Module):
 
         print("Training the network...")
         sleep(2)
-        print('\n\n\tLoading the dataset and creating the dataloader...\n\n\n')
+        print('\n\nLoading the dataset and creating the dataloader...\n\n\n')
 
+        #Print
         if print_info == '1':
+            #Some information about our data
             print("Validation and training dataset shape")
-            print("X_train shape:", X_train.shape)
-            print("y_train shape:", y_train.shape)
-            print("X_val shape:", X_val.shape)
-            print("y_val shape:", y_val.shape)
+            print("\tX_train shape:", X_train.shape)
+            print("\ty_train shape:", y_train.shape)
+            print("\tX_val shape:", X_val.shape)
+            print("\ty_val shape:", y_val.shape)
             print("\n\n\n")
-
+            sleep(6)
 
         #Combine input and output tensors
         train_dataset = TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
@@ -195,17 +211,18 @@ class Net_training(torch.nn.Module):
 
         #Print to verify that everything has been executed correctly, that the objects have been instantiated and the device is defined:
         if print_info == '1':
-            print(f'\t\tThe device selected for the training is: {device}')
-            print(f'\t\tTraining dataset object = {train_dataset}')
-            print(f'\t\tTraining dataloader object = {dataloader_train}')
-            print(f'\t\tValidation dataset object = {val_dataset}')
-            print(f'\t\tValidation dataloader object = {dataloader_val}')
-            print(f'\t\tNumber of datasets training and validation samples = {len(train_dataset),len(val_dataset)}')
+            print("Device, datasets and dataloader:\n")
+            print(f'\tThe device selected for the training is: {device}')
+            print(f'\tTraining dataset object = {train_dataset}')
+            print(f'\tTraining dataloader object = {dataloader_train}')
+            print(f'\tValidation dataset object = {val_dataset}')
+            print(f'\tValidation dataloader object = {dataloader_val}')
+            print(f'\tNumber of datasets training and validation samples = {len(train_dataset),len(val_dataset)}')
             sleep(4)
 
         
         #LOSS FUNCTION SELECTION
-        print('\n\n\tLoading the selected loss function...')
+        print('\n\nLoading the selected loss function...')
 
         #Function for multi-selection loss function
         if loss_function_choice == 'mse':  # Mean Square Error
@@ -219,7 +236,7 @@ class Net_training(torch.nn.Module):
 
         
         #OPTIMIZER SELECTION AND APPLICATION
-        print('\n\n\tLoading the selected optimizer...')
+        print('\n\nLoading the selected optimizer...')
 
         #Setup Adam or SGD optimizers for both the generator and the discriminator
         if optimizer_choice == "adam":
@@ -238,19 +255,12 @@ class Net_training(torch.nn.Module):
             #PRINT OF THE TRAINING FEATURES:
             print('\n\n\tSome hyperparameters of the network:\n')
             print(f'\t\t- Learning rate: {lr}')
-            print(f'\t\t- Optimizer: {optimizer_choice}')
             print(f'\t\t- Epochs: {n_epochs}')
             print(f'\t\t- Batch size: {minibatch_size}')   
             print(f'\t\t- Loss function selected: {loss_function_choice}')
+            print(f'\t\t- Optimizer: {optimizer_choice}')
 
-            sleep(4)
-            
-            #Print of the architecture:
-            print(f'\t\t- Architecture:')    
-            print(net)
-
-            
-            sleep(10)
+            sleep(6)
 
         
         #############################################################################
@@ -277,12 +287,13 @@ class Net_training(torch.nn.Module):
             #Initializes the training phase loss for the current epoch
             loss_value_train = 0.
             
-            ### TRAIN ###
             ### LOOP ON MINI-BATCHES ###
             for nb, (X_minibatch, y_minibatch) in enumerate(dataloader_train):  #loop on mini-batches
                 # Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
                 optimizer.zero_grad()
 
+                #Conversion double to float
+                X_minibatch = X_minibatch.float()
                 #Separate input and output
                 X_minibatch = X_minibatch.to(device)
                 y_minibatch = y_minibatch.to(device)
@@ -290,6 +301,9 @@ class Net_training(torch.nn.Module):
                 #Calculate the outputs
                 output = net(X_minibatch) #going forward, "net" is a callable object
                 
+                '''#Convert the [0,1] output in real output
+                output = output * (MAX - MIN) + MIN'''
+
                 #Calculate the loss on batches and save it:
                 loss_value_on_minibatch = loss_function(output, y_minibatch)
             
@@ -318,13 +332,23 @@ class Net_training(torch.nn.Module):
             
             ### VALIDATION ###
             # Validation of the epoch
-            loss_valid = Net_training.validate(net, dataloader_val, loss_function)
+            loss_valid, output_val = Net_training.validate(net, dataloader_val, loss_function, MIN, MAX)
 
             #Append all losses
             net_val_losses.append(loss_valid)
 
+        #Combine the tensors in the list output_val into a single tensor along the samples dimension
+        output_val_tensor = torch.cat(output_val, dim=0)
+        
+        ### MEAN AND STD OF THE OUTPUT ###
+        #Calculate the VALIDATION mean of the output data
+        mean_value = torch.mean(output_val_tensor)
+
+        # Calculate the VALIDATION standard deviation of the output data
+        std_value = torch.std(output_val_tensor)
+
         #### SAVING TRAINED NET ####
-        save_net(net,n_epochs, loss_value_train, loss_valid, path_pth, path_txt)
+        save_net(net,n_epochs, loss_value_train, loss_valid, mean_value, std_value, path_pth, path_txt)
 
         #### PLOT OF TRAINING AND VALIDATION LOSSES ####
         plot_loss(n_epochs, net_train_losses, net_val_losses, result_path_net)
@@ -354,6 +378,33 @@ class Net_training(torch.nn.Module):
     
         # Mostra il grafico
         plt.show()
+
+    def plot_pdfy_prova(output_data, path: str):
+        # Converti il tensore in una lista di liste
+        data_list = output_data.tolist()
+
+        # Crea un DataFrame da data_list
+        df = pd.DataFrame(data_list)
+
+        # Print della dimensionalità
+        print("Dimensionalità del DataFrame:", df.shape)
+
+        # Print dei nomi delle colonne
+        print("Nomi delle colonne:", df.columns)
+
+        # Density Plot and Histogram of the data in df
+        sns.histplot(df, kde=True, bins=int(180/5), color='darkblue', 
+                    edgecolor='black', linewidth=1.5)
+
+        plt.title('Density Plot and Histogram')
+        plt.xlabel('Data')
+        plt.ylabel('Density')
+         
+        # Salva l'immagine nel percorso specificato
+        plt.savefig(path)
+        
+        plt.show()
+
 
         
 

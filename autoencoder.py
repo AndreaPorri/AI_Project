@@ -31,6 +31,9 @@ import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from functions import *
 import argparse
 import yaml
@@ -56,7 +59,7 @@ def parse_command_line_arguments():
     parser = argparse.ArgumentParser(description='Process some command line arguments.') 
 
     #Add the arguments to the ArgumentParser object:
-    parser.add_argument('--pathConfiguratorYaml', type=str, required=True,
+    parser.add_argument('--pathConfiguratorYaml', type=str, default='config_file.yaml',
                         help='Insert the path of Yaml file containing all the parameters of the project')
     parser.add_argument('--print_info', type=str, default='0', choices=['1','0'],
                         help='You have to chose if you want to print some controls and checks')
@@ -68,7 +71,7 @@ def parse_command_line_arguments():
     return args
 
 
-### YAML CONFIGURATION FIILE ###
+### YAML CONFIGURATION FILE ###
 def yamlParser(path_yaml_file: str):  #takes in input the yaml file path
     """
     Function required for reading a YAML file and saving its content into a variable. The input will be passed via the terminal and will be the path
@@ -135,7 +138,8 @@ class Autoencoder(nn.Module):
             nn.Linear(in_shape, 3),
             nn.Tanh(),
             nn.Dropout(0.1),
-            nn.Linear(3, enc_shape)
+            nn.Linear(3, enc_shape),
+            nn.Tanh()
         )
 
         # Decoder
@@ -177,7 +181,7 @@ class Autoencoder(nn.Module):
             criterion: the loss function selected.
 
         Returns:
-            List of the average validation losses.
+            List of the average validation losses and outputs.
         '''
         #Recover device through model parameters.
         device = next(model.parameters()).device
@@ -233,19 +237,17 @@ class Autoencoder(nn.Module):
         Returns:
             net_train_losses and net_val_losses which are the lists containing the average losses of each epoch.
         '''
-        #Print
-        if print_info == '1':
-            print('Validation and training dataset shape')
-            print('Train set shape:', input_train_tensor.shape)
-            print('Validation set shape:', input_val_tensor.shape)
-            
-            print('\n\n\n')
-
         ### STARTING ###
-        print('Training the network...')
+        print('\n\nTraining the network...')
         sleep(2)
-        print('\n\n\tLoading the dataset and creating the dataloader...\n\n\n')
+        print('\n\nLoading the dataset and creating the dataloader...\n\n\n')
         sleep(2)
+        
+        ### DATA ###
+        #Normalization data
+        input_train_tensor, mean_train, std_train = real_norm_input(input_train_tensor)
+        input_val_tensor, _, _ = real_norm_input(input_val_tensor, mean_train, std_train)
+
 
         #### DATALOADER ####
         #Convert input_tensor to a PyTorch TensorDataset
@@ -263,16 +265,16 @@ class Autoencoder(nn.Module):
         #Print
         if print_info == '1':
             # Print to verify that everything has been executed correctly, that the objects have been instantiated and the device is defined
-            print(f'\t\tThe device selected for the training is: {device}')
-            print(f'\t\tTraining dataset object = {dataset_train}')
-            print(f'\t\tTraining dataloader object = {dataloader_train}')
-            print(f'\t\tValidation dataset object = {dataset_val}')
-            print(f'\t\tValidation dataloader object = {dataloader_val}')
-            print(f'\t\tNumber of datasets training and validation samples = {len(dataset_train),len(dataset_val)}')
-            sleep(4)
+            print(f'\t- The device selected for the training is: {device}')
+            print(f'\t- Training dataset object = {dataset_train}')
+            print(f'\t- Training dataloader object = {dataloader_train}')
+            print(f'\t- Validation dataset object = {dataset_val}')
+            print(f'\t- Validation dataloader object = {dataloader_val}')
+            print(f'\t- Number of datasets training and validation samples = [{len(dataset_train),len(dataset_val)}]')
+            sleep(6)
 
         #### LOSS FUNCTION SELECTION ####
-        print('\n\n\tLoading the selected loss function...')
+        print('\n\nLoading the selected loss function...')
 
         # Function for multi-selection loss function
         if loss_function_choice == 'mse':  #Mean Square Error
@@ -285,7 +287,7 @@ class Autoencoder(nn.Module):
 
     
         #### OPTIMIZER SELECTION AND APPLICATION ####
-        print('\n\n\tLoading the selected optimizer...')
+        print('\n\nLoading the selected optimizer...')
 
         # Setup Adam or SGD optimizers for both the generator and the discriminator
         if optimizer_choice == 'adam': #Adam
@@ -301,14 +303,16 @@ class Autoencoder(nn.Module):
         #Print
         if print_info == '1':
             #PRINT OF THE TRAINING FEATURES:
-            print('\n\n\tSome hyperparameters of the network:\n')
-            print(f'\t\t- Learning rate: {lr}')
-            print(f'\t\t- Optimizer: {optimizer_choice}')
-            print(f'\t\t- Epochs: {n_epochs}')
-            print(f'\t\t- Batch size: {batch_size}')   
-            print(f'\t\t- Loss function selected: {loss_function_choice}')
-            sleep(12)
+            print('\n\n\nSome hyperparameters of the network:\n')
+            print(f'\t- Learning rate: {lr}')
+            print(f'\t- Epochs: {n_epochs}')
+            print(f'\t- Batch size: {batch_size}')   
+            print(f'\t- Loss function selected: {loss_function_choice}')
+            print(f'\t- Optimizer: {optimizer_choice}')
+            sleep(8)
 
+        
+        
         #############################################################################
 
                                 #STARTING TRAINING LOOP
@@ -378,13 +382,35 @@ class Autoencoder(nn.Module):
             net_val_losses.append(loss_valid)
         
         #### SAVING TRAINED AUTOENCODER ####
-        save_net(model, epoch, epoch_loss_train, loss_valid, path_pth, path_txt)
-
+        save_net_aut(model, epoch, epoch_loss_train, loss_valid, path_pth, path_txt)
         #### PLOT OF TRAINING AND VALIDATION LOSSES ####
         plot_loss(n_epochs, net_train_losses, net_val_losses, image_loss_path)
 
-        return net_train_losses,net_val_losses
+        return net_train_losses,net_val_losses  
 
+    def predict_encoder(self, x): #Prediction of the encoder
+        """
+        Predict using the trained autoencoder.
+
+        Args:
+            x (torch.Tensor): Input tensor for prediction.
+
+        Returns:
+            torch.Tensor: The encoded representation of the input tensor.
+            torch.Tensor: The decoded output tensor.
+        """
+        # Ensure the model is in evaluation mode
+        self.eval()
+
+        # Move the input tensor to the same device as the model
+        device = next(self.parameters()).device
+        #Put the input on the device
+        x = x.to(device)
+
+        # Encoding
+        encoded = self.encoder(x)
+
+        return encoded
 
 if __name__ == '__main__':
 
@@ -397,6 +423,7 @@ if __name__ == '__main__':
     dataroot,results_path,reduce_dataset_autoencoder_path,path_pth_autoencoder,path_txt_autoencoder,image_loss_path,loss_function,optimizer,n_epochs,lr,batch_size = load_hyperparams(pathConfiguratorYaml)
 
     
+    
     ##########################################################################################                                    
                                         
                             ### LOAD AND PREPROCESS DATASET ###
@@ -407,27 +434,55 @@ if __name__ == '__main__':
     dataframe = pd.read_csv(dataroot, sep=';') #The .csv file uses ; as a separator instead of space
 
     #Resizing dataset from original one (I take only 6 columns)
-    dataset_reduced = dataset_reduction(dataframe,'NOx(GT)','PT08.S1(CO)','T','RH','PT08.S2(NMHC)','CO(GT)')
+    dataset_reduced_dirty = dataset_reduction(dataframe,'NOx(GT)','PT08.S1(CO)','T','RH','PT08.S2(NMHC)','CO(GT)')
     
-    #Print
-    if args.print_info == '1':
-        print('The dimensionality of the reduced and dirty datset is:',dataset_reduced.shape)
     
     #Cleaning the reduced dataset
-    dataset_reduced = cleaning_dataset_function(dataset_reduced).iloc[:, :5]
+    dataset_reduced = cleaning_dataset_function(dataset_reduced_dirty).iloc[:, :5]
 
     #Print
     if args.print_info == '1':
-        print('The dimensionality of the reduced datset is: ',dataset_reduced.shape)
-        print('Some rows of the reduced dataset: \n',dataset_reduced.head(5))
+        
+        #Check dimensionality of the new dataset
+        print('The dimensionality of the reduced and dirty datset is:',dataset_reduced_dirty.shape)
+        print('The dimensionality of the reduced datset is:',dataset_reduced.shape)
+        sleep(6)
+        #Show the dataset first rows
+        print('\n\nSome rows of the reduced dataset: \n',dataset_reduced.head(5))
         sleep(10)
-    
+
+        
+        ### PLOT DATA ###
+        
+        #Create a PCA object with 3 components, instead of 5.
+        pca = PCA(n_components=3)
+        
+        #Fit and transform the data on a reduced dimensional representatiozn
+        reduced_data_PLOT = pca.fit_transform(dataset_reduced)
+        
+        #Create a dataframe with this new data
+        reduced_df_PLOT = pd.DataFrame(data=reduced_data_PLOT, columns=['Dimension 1', 'Dimension 2','Dimension 3'])
+
+        # Create a 3D scatter plot.
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(reduced_df_PLOT['Dimension 1'], reduced_df_PLOT['Dimension 2'], reduced_df_PLOT['Dimension 3'])
+        ax.set_xlabel('Dimension 1')
+        ax.set_ylabel('Dimension 2')
+        ax.set_zlabel('Dimension 3')
+        ax.set_title('3D Visualization using PCA')
+        plt.savefig(f'{results_path}/Autoencoder/input_data_plot.png')
+        plt.show()
+      
+    ### SAVE THE NEW DATASET ###
     #Save the reduced dataset
     create_file_csv(dataset_reduced,reduce_dataset_autoencoder_path)
 
     ### DEVICE ###
     my_device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    
+    
     ##########################################################################################                                    
                                         
                             ### TRAINING AND VALIDATION SETS ###
@@ -437,16 +492,26 @@ if __name__ == '__main__':
     #Load the data from the new csv file
     data = load_csv_file(reduce_dataset_autoencoder_path)
 
+    ### CREATE THE SETS ###
     #Splitting data in training, validation e test sets(which has 0 samples)
     data_X_train, data_X_val, _ = create_autoencoder_splits_unbalanced(data, 0.85, 0.15)
+
+    #Print
+    if args.print_info == '1':
+        
+        #Check dimensionality of the new sets
+        print('\n\nThe dimensionality training set:',data_X_train.shape)
+        print('The dimensionality validation set:',data_X_val.shape)
+        sleep(6)
+        
        
     ##########################################################################################                                    
                                         
-                            ### INITIALIZATION OF THE NETWORK ###
+                          ### INITIALIZATION OF THE AUTOENCODER ###
 
     ##########################################################################################
 
-    #Create Autoencoder architecture 
+    #Create Autoencoder architecture and transform the elements in double (avoid an error)
     autoencoder = Autoencoder().double()
 
     #Initializing weights
@@ -457,6 +522,7 @@ if __name__ == '__main__':
 
     #Print
     if args.print_info == '1':
+        #Autoencoder architecture
         print(f'\n\n\t\t- Autoencoder Architecture:')
         print(autoencoder)
         sleep(10)
@@ -471,6 +537,5 @@ if __name__ == '__main__':
     data_X_train = data_X_train.to(my_device)
     data_X_val = data_X_val.to(my_device)
 
-    #### TRAINING LOOP ####
     #Training the network
     Autoencoder.training(autoencoder, data_X_train, data_X_val, results_path, path_pth_autoencoder, path_txt_autoencoder, image_loss_path, args.print_info, loss_function, optimizer, n_epochs, lr, batch_size)

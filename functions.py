@@ -15,6 +15,8 @@ import torch
 import pandas as pd
 import os
 from matplotlib import pyplot as plt
+import numpy as np
+from sklearn.decomposition import PCA
 '''
             ############################################################################
             #                           DATASET FUNCTIONS
@@ -74,6 +76,15 @@ def cleaning_dataset_function(dataframe): #Clean reduced dataset
 
     return dataframe
 
+def PCA_fun(X, print_info, result_path): #Dimensional reduction Principal Component Analysis
+    #Use PCA to reduce dimensionality to 1 dimension
+    pca = PCA(n_components=1)
+    X_pca_numpy = pca.fit_transform(X)
+
+    #Convert the NumPy array to a PyTorch tensor
+    X_pca = torch.from_numpy(X_pca_numpy)
+    
+    return X_pca
 '''
             ############################################################################
             #                           GENERIC FUNCTIONS
@@ -123,30 +134,30 @@ def load_csv_file(filename): #Load CSV file in X tensor(used in autoencoder.py)
             #                         NORMALIZATION FUNCTIONS
             ############################################################################
 '''
-def normalize_input_data(X, min_val=None, max_val=None): #Normalize input
+def restrict_input_data(X, min_val=None, max_val=None): #Restrict input [-1,1]
     '''
-    Provides a method for normalizing input pytorch tensors to a pytorch tensor of values between -1 and 1.
+    Provides a method for restrict input pytorch tensors to a pytorch tensor of values between -1 and 1.
 
     Args:
-        X: input tensor not normalize.
-        min_val: min value for normalization.
-        max_val: max value for normalization.
+        X: input tensor not restricted.
+        min_val: min value for restriction.
+        max_val: max value for restriction.
     Returns:
-        Normalized input pytorch tensor.
+        Restriction input pytorch tensor.
     '''
     #Calculate of min and max tensor value
     if min_val is None:
             min_val = X.min()
     if max_val is None:
             max_val = X.max()        
-    # Adjust the range to -1 to 1 --> Normalization
+    # Adjust the range to -1 to 1 --> Restriction
     normalized_X = 2 * (X - min_val) / (max_val - min_val) - 1
 
     return normalized_X
 
-def normalize_output_data(y, min_val=None, max_val=None): ##Normalize output
+def restrict_output_data(y, min_val=None, max_val=None): #Restrict output [0,1]
     '''
-    Provides a method for normalizing output pytorch tensors to a pytorch tensor of values between 0 and 1.
+    Provides a method for restrict output pytorch tensors to a pytorch tensor of values between 0 and 1.
 
     Args:
         y: output tensor not normalize.
@@ -164,6 +175,27 @@ def normalize_output_data(y, min_val=None, max_val=None): ##Normalize output
     normalized_y = (y - min_val) / (max_val - min_val)
     
     return normalized_y
+
+def real_norm_input(X, mean=None, std=None): #Normalization input
+    '''
+    Provides a method for normalizing input pytorch tensors to a pytorch tensor.
+
+    Args:
+        X: input tensor not restricted.
+        mean: mean value for restriction.
+        std: std value for restriction.
+    Returns:
+        Normalize input pytorch tensor.
+    '''    
+    #Calculate of mean and std tensor value
+    if mean is None:
+        mean = torch.mean(X)
+    if std is None:
+        std = torch.std(X)
+    #Normalization
+    X_normalized = (X - mean) / std
+
+    return X_normalized, mean, std
 
 '''
             ############################################################################
@@ -190,7 +222,7 @@ def load_data_from_file(filename, num_col = 6):
 
     return X, y
 
-def create_splits_unbalanced(X, y, train_frac, valid_frac, input_norm = normalize_input_data, output_norm = normalize_output_data, randomize=True):
+def create_splits_unbalanced(X, y, train_frac, valid_frac, randomize=True):
     """
     Creates (randomized) training, validation, test data splits.
 
@@ -219,9 +251,9 @@ def create_splits_unbalanced(X, y, train_frac, valid_frac, input_norm = normaliz
     #Calculate the number of samples that were in training and validation
     train_size, valid_size = int(n * train_frac), int(n * valid_frac)
 
-    return input_norm(X[:train_size]), output_norm(y[:train_size]), input_norm(X[train_size:train_size+valid_size]), output_norm(y[train_size:train_size+valid_size]), input_norm(X[train_size+valid_size:]), output_norm(y[train_size+valid_size:])
+    return X[:train_size], y[:train_size], X[train_size:train_size+valid_size], y[train_size:train_size+valid_size], X[train_size+valid_size:], y[train_size+valid_size:]
 
-def create_autoencoder_splits_unbalanced(X, train_frac, valid_frac, input_norm = normalize_input_data, randomize=True):
+def create_autoencoder_splits_unbalanced(X, train_frac, valid_frac, randomize=True):
     """
     Creates (randomized) training, validation, test data splits.
 
@@ -248,7 +280,7 @@ def create_autoencoder_splits_unbalanced(X, train_frac, valid_frac, input_norm =
     #Calculate the number of samples that were in training and validation
     train_size, valid_size = int(n * train_frac), int(n * valid_frac)
 
-    return input_norm(X[:train_size]), input_norm(X[train_size:train_size+valid_size]), input_norm(X[train_size+valid_size:])
+    return X[:train_size], X[train_size:train_size+valid_size], X[train_size+valid_size:]
 
 '''
             ############################################################################
@@ -256,7 +288,7 @@ def create_autoencoder_splits_unbalanced(X, train_frac, valid_frac, input_norm =
             ############################################################################
 '''
 
-def save_net(model, epoch, epoch_loss_train, epoch_loss_val, path_pth, path_txt):
+def save_net(model, epoch, epoch_loss_train, epoch_loss_val, mean_value, std_value, path_pth, path_txt):
     '''
     Save the "model state" of the net to a .pth file in the specified path
     Args:
@@ -276,9 +308,33 @@ def save_net(model, epoch, epoch_loss_train, epoch_loss_val, path_pth, path_txt)
     #Write a .txt file to the specified path and writes information regarding the epoch and the loss to which
     #the best trained net belongs
     with open(path_txt, "w") as f:
-        print(f"Checkpoint net:\n\n\tEPOCH:\t{epoch+1}\n\n\tLOSS TRAIN:\t{epoch_loss_train}\n\n\tLOSS VALIDATION:\t{epoch_loss_val}", file=f)
+        print(f"Checkpoint net:\n\n\tEPOCH:\t{epoch}\n\n\tLOSS TRAIN:\t{epoch_loss_train}\n\n\tLOSS VALIDATION:\t{epoch_loss_val}\n\n\tMEAN VALIDATION:\t{mean_value}\n\n\tSTD VALIDATION:\t{std_value}", file=f)
+
+def save_net_aut(model, epoch, epoch_loss_train, epoch_loss_val, path_pth, path_txt):
+    '''
+    Save the "model state" of the net to a .pth file in the specified path
+    Args:
+        -
+        -
+        -
+        -
+        -
+        -
+
+    Return:
+        Two file with the model state and a text file with some info.
+    
+    '''
+    #Save the model
+    torch.save(model.state_dict(), path_pth)
+    #Write a .txt file to the specified path and writes information regarding the epoch and the loss to which
+    #the best trained net belongs
+    with open(path_txt, "w") as f:
+        print(f"Checkpoint net:\n\n\tEPOCH:\t{epoch}\n\n\tLOSS TRAIN:\t{epoch_loss_train}\n\n\tLOSS VALIDATION:\t{epoch_loss_val}", file=f)
 
 def plot_loss(n_epochs, net_train_losses, net_val_losses, result_path):
+
+    #Plot of the losses for each epoch
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, n_epochs + 1), net_train_losses, label='Training Loss')
     plt.plot(range(1, n_epochs + 1), net_val_losses, label='Validation Loss')
@@ -288,10 +344,10 @@ def plot_loss(n_epochs, net_train_losses, net_val_losses, result_path):
     plt.legend()
     plt.grid(True)
     
-    # Salva l'immagine nel percorso specificato
+    #Save the image in the result path
     plt.savefig(result_path)
 
-    # Mostra il grafico
+    #Show the image
     plt.show()
 
 

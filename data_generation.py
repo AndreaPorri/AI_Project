@@ -1,10 +1,8 @@
 import numpy as np
 import torch
 
+
 def generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples):
-    #Normalize mixing parameters to ensure they sum up to 1
-    mixing_parameters = np.array(mixing_parameters) / sum(mixing_parameters)
-    
     #Lista samples
     samples = []
     
@@ -25,6 +23,5 @@ def generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, 
     samples_tensor = torch.tensor(samples)
 
     return samples_tensor
-
 
 
