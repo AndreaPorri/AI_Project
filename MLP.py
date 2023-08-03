@@ -77,8 +77,6 @@ class MLP(nn.Module):
 class Net_training(torch.nn.Module):
     def __init__(self):
         super(Net_training, self).__init__()
-        
-    import torch
 
     def predict(net, input_tensor):
         '''

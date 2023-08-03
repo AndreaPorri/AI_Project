@@ -259,7 +259,6 @@ if __name__ == "__main__":
         data_X_val = autoencoder.predict_encoder(data_X_val).detach().to(my_device)
         data_X_test = autoencoder.predict_encoder(data_X_test).detach().to(my_device)
         
-        
         #Print
         if args.print_info == '1':
             
@@ -348,10 +347,15 @@ if __name__ == "__main__":
                 plt.savefig(f'{results_path}/NET/new_input_data_encoded_MLP.png')
                 plt.show()
 
-    #TAKE MAX AND MIN OF TRAINING SET (TO RESTRICT THE GMM GENERATION)
+    ### TAKE MAX AND MIN OF TRAINING SET (TO RESTRICT THE GMM GENERATION) ###
     min_train = torch.min(data_X_train)
     max_train = torch.max(data_X_train)
 
+    #Print
+    if args.print_info == '1':
+        print(f'MEAN dei 3 set (tr,v,te): {torch.mean(data_X_train)} e {torch.mean(data_X_val)} e {torch.mean(data_X_test)}')
+        print(f'STD dei 3 set (tr,v,te): {torch.std(data_X_train)} e {torch.std(data_X_val)} e {torch.std(data_X_test)}')
+        sleep(5)
     #################################################################
 
                         #### TRAINING PHASE ####
@@ -394,7 +398,13 @@ if __name__ == "__main__":
             print('Input shape: ',data_X_test.shape)
 
         ### PREDICTION ###
-        outputs_test = Net_training.predict(net,data_X_test.float())     
+        outputs_test = Net_training.predict(net,data_X_test.float())
+        outputs_train = Net_training.predict(net,data_X_train.float())
+        outputs_val = Net_training.predict(net,data_X_val.float())
+        #Concatenation for the box plot
+        concatenated_tensor_output_boxp = torch.cat((outputs_test, outputs_train, outputs_val), dim=0)
+        concatenated_tensor_input_boxp = torch.cat((data_X_train, data_X_val, data_X_test), dim=0)
+
         
         #Print
         if args.print_info == '1':
@@ -422,13 +432,11 @@ if __name__ == "__main__":
 
         #################################################################
 
-        
-        #This are parameter necessary to define the probability that a specific Gaussiam could be selected for 
-        #generating. the means and std  lists characterizes every single Gaussian of the mixture
-
                                 ###############################
                                     ### GMM PARAMETERS ###
                                 ###############################
+        #These are parameters necessary to define the probability that a specific Gaussiam could be selected for 
+        #generating. the means and std  lists characterizes every single Gaussian of the mixture
 
         #MIXING PARAMETERs
         #Definition of Gaussian mixing parameter
@@ -437,10 +445,10 @@ if __name__ == "__main__":
         mixing_parameters /= np.sum(mixing_parameters)
 
         #MEANs
-        means = np.random.uniform(0.15, 0.2, num_gaussians)
+        means = np.random.uniform(-0.39, -0.36, num_gaussians)
         
         #STDs
-        std_deviations = np.random.uniform(0.1, 0.2, num_gaussians)
+        std_deviations = np.random.uniform(0.12, 0.18, num_gaussians)
         
         #SAVE PARAMETERS ON TEXT FILE
         #Combine the parameters into an array 2D, a row for each gaussian of the GMM
@@ -448,75 +456,89 @@ if __name__ == "__main__":
         # Scrive i parametri nel file .txt
         np.savetxt(f'{results_path}/Evaluation/saved_GMM_parameters.txt', parameters, header="Gaussian_Index Mixing_Parameter Mean Standard_Deviation", fmt='%d %.6f %.6f %.6f')                  
 
-        '''#Genero:
+        
+                            ######################################
+                                ### GMM GENERATION SAMPLES ###
+                            ######################################
+        
+        #Generate artificial input:
         new_samples = generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples)
-        #Print the generated samples
-        #print(new_samples)
+        
+        #Print
+        if args.print_info == '1':
+            print(f'Artificial Sample Max e Min: {torch.min(new_samples)} e {torch.max(new_samples)}')
+            print(f'Sample Max e Min: {min_train} e {max_train}')
+            print('Shape of the new sample tensor: ',new_samples.shape)
+            sleep(10)
+        
         #Converto in float
         new_samples = new_samples.to(torch.float)
-        #Normalizzo:
-        #new_samples = normalize_input_data(new_samples)
-        #print(new_samples)
         
 
-        #Dataloader
-        dataloader_artificial = DataLoader(TensorDataset(new_samples), batch_size=8, shuffle=False, drop_last=False)
-
-        ###### TESTO ARTIFICIAL INPUT ######
-
-        # Assuming we already have 'net' defined and trained
-        trained_mlp = net[1]
-        print(trained_mlp)
-
-        #Vado in inferenza
-        outputs_artificial = Net_training.predict(trained_mlp, new_samples)
-        print("Dimensioni del tensore outputs_artificial:", outputs_artificial.shape)
+                        ################################################
+                            ### CHECK ARTIFICIAL SAMPLES OUTPUTS ###
+                        ################################################
+        #Calculate Ouputs of the artificial sample
+        outputs_artificial = Net_training.predict(net, new_samples)
+        
 
         
+                        ################################################
+                                    ### CREATE BOXPLOT ###
+                        ################################################
+        if args.print_info == '1':
+            print('Mediana Test data: ', torch.median(concatenated_tensor_output_boxp))
+            print('Mediana Artificial data: ', torch.median(outputs_artificial))
         
-        
-        # Creating plot
         # Converti i tensori PyTorch in liste
-        data_test = outputs_test.cpu().tolist()
+        data_real = concatenated_tensor_output_boxp.cpu().tolist()
+        data_real_input = concatenated_tensor_input_boxp.cpu().tolist()
         data_artificial = outputs_artificial.cpu().tolist()
+        data_artificial_input = new_samples.cpu().tolist()
 
         # Crea un DataFrame di pandas con colonne nominate
-        df_test = pd.DataFrame(data_test, columns=['Test'])
+        df_real = pd.DataFrame(data_real, columns=['Real'])
+        df_real_input = pd.DataFrame(data_real_input, columns=['Real'])
         df_artificial = pd.DataFrame(data_artificial, columns=['Artificial'])
-        # Stampa i DataFrame
-        print("DataFrame da outputs_test_plot:")
-        print(df_test.shape)
-
-        print("\nDataFrame da outputs_artificial_plot:")
-        print(df_artificial.shape)
-
+        df_artificial_input = pd.DataFrame(data_artificial_input, columns=['Artificial'])
+        
         #selection
-        test = df_test.loc[:, 'Test'].values
+        real = df_real.loc[:, 'Real'].values
+        real_input = df_real_input.loc[:, 'Real'].values
         artific = df_artificial.loc[:, 'Artificial'].values
+        artific_input = df_artificial_input.loc[:, 'Artificial'].values
 
         # Creazione del plot box
         plt.figure(figsize=(8, 6))
-        plt.boxplot([test, artific], labels=['Test', 'Artificial'],meanline=True)
+        plt.boxplot([real_input, artific_input, real, artific], labels=['Real inp', 'Artificial inp','Real out', 'Artificial out'],meanline=True)
         plt.title('Box Plot di due set di dati')
         plt.xlabel('Set di dati')
         plt.ylabel('Valore')
         plt.grid(True)
+        plt.savefig(f'{results_path}/Evaluation/box_plot_output_inp.png')
         plt.show()
+
+
+                        ################################################
+                                    ### CREATE PDF PLOTS ###
+                        ################################################
+        Net_training.plot_pdfy(concatenated_tensor_input_boxp, new_samples, f'{results_path}/Evaluation/pdx_artificial_real.png')
+        Net_training.plot_pdfy(concatenated_tensor_output_boxp, outputs_artificial, f'{results_path}/Evaluation/pdy_artificial_real.png')
+
+
+                        #######################################################
+                                    ### CREATE BOXPLOT WITHOUT OUTLIERS ###
+                        #######################################################
 
         #Calcolo mean and std
         mean_value_art = torch.mean(outputs_artificial)
         std_value_art = torch.std(outputs_artificial)
-
         
-        
-        
-        
-        ################## RIMOZIONE #############
+        ################## RIMOZIONE OULIERS IN INPUT #############
         # Calcola il primo quartile (Q1) e il terzo quartile (Q3)
-        Q1 = np.percentile(df_artificial.loc[:, 'Artificial'].values, 25)
-        Q3 = np.percentile(df_artificial.loc[:, 'Artificial'].values, 75)
+        Q1 = np.percentile(df_artificial_input.loc[:, 'Artificial'].values, 25)
+        Q3 = np.percentile(df_artificial_input.loc[:, 'Artificial'].values, 75)
 
-        
         # Calcola l'IQR
         IQR = Q3 - Q1
 
@@ -524,30 +546,53 @@ if __name__ == "__main__":
         lower_bound = Q1 - 1.5 * IQR
         upper_bound = Q3 + 1.5 * IQR
 
-        print("Lower Bound:", lower_bound)
-        print("Upper Bound:", upper_bound)
-        print("Min value:", df_artificial.loc[:, 'Artificial'].values.min())
-        print("Max value:", df_artificial.loc[:, 'Artificial'].values.max())
-        
+        #Print
+        if args.print_info == '1':
+            print("Lower Bound:", lower_bound)
+            print("Upper Bound:", upper_bound)
+            print("Min value:", df_artificial_input.loc[:, 'Artificial'].values.min())
+            print("Max value:", df_artificial_input.loc[:, 'Artificial'].values.max())
+            
         #Condition
-        condition = (df_artificial['Artificial'] >= lower_bound) & (df_artificial['Artificial'] <= upper_bound)
+        condition = (df_artificial_input['Artificial'] >= lower_bound) & (df_artificial_input['Artificial'] <= upper_bound)
 
         # Filtra gli outlier
-        filtered_ARTIFICIAL_data = df_artificial[condition]
+        filtered_ARTIFICIAL_input_data = df_artificial_input[condition]
         
         #Rifaccio
-        artific_fil = filtered_ARTIFICIAL_data.loc[:, 'Artificial'].values
-        print("\nDataFrame shape filtered:")
-        print(filtered_ARTIFICIAL_data.shape)
-        print(len(artific_fil))
+        artific_input_fil = filtered_ARTIFICIAL_input_data.loc[:, 'Artificial'].values
+
+        #Put it into torch tensor
+        artific_input_fil_tens = torch.tensor(artific_input_fil).reshape(-1,1)
+
+        #Obtain the prediction
+        artific_output_fil = Net_training.predict(net, artific_input_fil_tens.float())
+
+        # Converti i tensori PyTorch in liste
+        data_art_fil = artific_output_fil.cpu().tolist()
+        # Crea un DataFrame di pandas con colonne nominate
+        data_art_fil = pd.DataFrame(data_art_fil, columns=['Artificial'])
+        #selection
+        data_art_fil_out = data_art_fil.loc[:, 'Artificial'].values
 
         # Creazione del plot box
         plt.figure(figsize=(8, 6))
-        plt.boxplot([test, artific_fil], labels=['Test', 'Artificial'],meanline=True)
+        plt.boxplot([real, data_art_fil_out, artific], labels=['Real out', 'Artificial\n filtered out', 'Artificial\n not filtered out'],meanline=True)
         plt.title('Box Plot di due set di dati')
         plt.xlabel('Set di dati')
         plt.ylabel('Valore')
         plt.grid(True)
+        plt.savefig(f'{results_path}/Evaluation/box_plot_output_inp_fil1.png')
+        plt.show()
+
+        # Creazione del plot box
+        plt.figure(figsize=(8, 6))
+        plt.boxplot([real_input ,artific_input_fil, artific_input], labels=['Real inp','Artificial\n filtered inp', 'Artificial\n not filtered inp'],meanline=True)
+        plt.title('Box Plot di due set di dati')
+        plt.xlabel('Set di dati')
+        plt.ylabel('Valore')
+        plt.grid(True)
+        plt.savefig(f'{results_path}/Evaluation/box_plot_output_inp_fil2.png')
         plt.show()
 
         #Saves
@@ -558,9 +603,3 @@ if __name__ == "__main__":
             
         #Stampo la PDFY artificiale
         #Net_training.plot_pdfy_prova(outputs_artificial, 'D:/Results/NET/ARTIFICIAL_pfdy.png')
-
-
-
-    
-
-     '''

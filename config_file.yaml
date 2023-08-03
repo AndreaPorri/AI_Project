@@ -95,4 +95,4 @@ hidden_layers_mlp:
 num_gaussians:
     32
 n_samples:
-    100000
+    6944

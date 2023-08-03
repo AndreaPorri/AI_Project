@@ -2,12 +2,12 @@ import numpy as np
 import torch
 
 
-def generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples, min_val=-0.9617483019828796, max_val=3.4695065021514893):
+def generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples, min_val=None, max_val=None):
     #Lista samples
     samples = []
     
     #Loop for generating samples
-    for _ in range(n_samples):
+    while len(samples) < n_samples:
         #Generate a random number between 0 and 1
         random_number = np.random.random()
         
@@ -26,7 +26,7 @@ def generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, 
 
 
     # Convert samples list to PyTorch tensor
-    samples = np.array(samples).reshape(n_samples, 1)
+    samples = np.array(samples).reshape(-1, 1)
     samples_tensor = torch.tensor(samples)
 
     return samples_tensor
