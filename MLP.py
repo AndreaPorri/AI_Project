@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader, TensorDataset
 from functions import *
 from autoencoder import *
@@ -38,7 +39,7 @@ class MLP(nn.Module):
         #Iterative creation of hidden layers with the following structure and specification given to the class.
         for hidden_size in hidden_sizes:
             hidden_layers.append(nn.Linear(prev_size, hidden_size))
-            hidden_layers.append(nn.Tanh())
+            hidden_layers.append(nn.PReLU())
             hidden_layers.append(nn.Dropout(0.1,inplace=False)),
             
             #Add the new input size for the next layer.
@@ -77,35 +78,32 @@ class Net_training(torch.nn.Module):
     def __init__(self):
         super(Net_training, self).__init__()
         
-    def predict(net, dataloader):
+    import torch
+
+    def predict(net, input_tensor):
         '''
         Make predictions using the neural network.
 
         Args:
             net: the neural network of the class Net.
-            dataloader: dataloader object that provides batches of data.
+            X: PyTorch tensor containing the input data.
 
         Returns:
             Network output.
         '''
-        #Retrieve the device where the parameters are
+        # Retrieve the device where the parameters are
         device = next(net.parameters()).device  # we assume that all the network parameters are on the same device
-        #lista output
-        outputs = []
-
+        
         with torch.no_grad():
             net.eval()
+            # Move the input data to the device
+            X = input_tensor.to(device)
+            # Compute the output of the network
+            output = net(X)
 
-            for X_minibatch in dataloader:
-                # Move the mini-batch to the device
-                X_minibatch = X_minibatch.to(device)
-                # Compute the output of the mini-batch
-                output = net(X_minibatch)
-                outputs.append(output)
+        return output
 
-        return torch.cat(outputs, dim=0)
-
-    def validate(net, dataloader_val, criterion, MIN, MAX):
+    def validate(net, dataloader_val, criterion):
         '''
         Validate the neural network.
 
@@ -121,6 +119,7 @@ class Net_training(torch.nn.Module):
         device = next(net.parameters()).device
         val_loss = 0.0
         outputs = []
+        targets = []
 
         #Evaluation mode
         with torch.no_grad():
@@ -141,24 +140,33 @@ class Net_training(torch.nn.Module):
                 #Predictions
                 output = net(X_val_minibatch)
 
-                '''#Convert the [0,1] output in real output
-                output = output * (MAX - MIN) + MIN'''
-
                 #Calculate the losses of the minibatch
                 loss = criterion(output, y_val_minibatch)
 
                 #Accumulate the loss
                 val_loss += loss.item()
 
-                #Save outputs
+                #Save outputs and targets
                 outputs.append(output)
+                targets.append(y_val_minibatch)
 
         #Calculate the average validation loss
         avg_val_loss = val_loss / len(dataloader_val)
+        
+        #Combine the tensors in the list output_val and targets into a single tensor along the samples dimension
+        output_val_tensor = torch.cat(outputs, dim=0)
+        targets_tensor = torch.cat(targets, dim=0)
 
-        return avg_val_loss, outputs
+        #Convert tensors to numpy arrays for calculating the R2 score
+        targets_tensor_np = targets_tensor.cpu().numpy()
+        output_val_np = output_val_tensor.cpu().numpy()
+
+        #Calculate the R2 score
+        r2 = r2_score(targets_tensor_np, output_val_np)
+
+        return avg_val_loss, outputs, r2
     
-    def training(net, X_train, X_val, y_train, y_val, path_pth, path_txt, results_path, result_path_net, print_info, n_epochs, lr, minibatch_size, loss_function_choice, optimizer_choice, MIN, MAX):
+    def training(net, X_train, X_val, y_train, y_val, path_pth, path_txt, results_path, result_path_net, print_info, n_epochs, lr, minibatch_size, loss_function_choice, optimizer_choice):
         """
         Train a neural network for multiple epochs.
 
@@ -198,6 +206,10 @@ class Net_training(torch.nn.Module):
             print("\n\n\n")
             sleep(6)
 
+        #Reshape the target in a correct way
+        y_train = y_train.reshape(-1,1)
+        y_val = y_val.reshape(-1,1)
+        
         #Combine input and output tensors
         train_dataset = TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
         val_dataset = TensorDataset(torch.Tensor(X_val), torch.Tensor(y_val))
@@ -218,7 +230,11 @@ class Net_training(torch.nn.Module):
             print(f'\tValidation dataset object = {val_dataset}')
             print(f'\tValidation dataloader object = {dataloader_val}')
             print(f'\tNumber of datasets training and validation samples = {len(train_dataset),len(val_dataset)}')
-            sleep(4)
+            
+            print(f'\n\n INPUT OUTPUT SHAPE:  {X_train.shape} e {y_train.shape}')
+            print(f'\n INPUT OUTPUT MIN MAX:  {torch.min(X_train)} - {torch.max(X_train)} e {torch.min(y_train)} - {torch.max(y_train)}')
+            
+            sleep(20)
 
         
         #LOSS FUNCTION SELECTION
@@ -282,14 +298,16 @@ class Net_training(torch.nn.Module):
         net_train_losses = [] #list of each loss of the epoch
         net_val_losses = [] #list of the loss of the epochs
 
+        
         ######### LOOP ON EPOCHS ##########
         for e in trange(n_epochs):  #loop on epochs
             #Initializes the training phase loss for the current epoch
             loss_value_train = 0.
-            
+            #Initialize the sum of the R2 scores during training epoch
+            net_train_r2 = 0.
             ### LOOP ON MINI-BATCHES ###
             for nb, (X_minibatch, y_minibatch) in enumerate(dataloader_train):  #loop on mini-batches
-                # Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
+                #Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
                 optimizer.zero_grad()
 
                 #Conversion double to float
@@ -297,16 +315,13 @@ class Net_training(torch.nn.Module):
                 #Separate input and output
                 X_minibatch = X_minibatch.to(device)
                 y_minibatch = y_minibatch.to(device)
-
+                
                 #Calculate the outputs
                 output = net(X_minibatch) #going forward, "net" is a callable object
-                
-                '''#Convert the [0,1] output in real output
-                output = output * (MAX - MIN) + MIN'''
-
+               
                 #Calculate the loss on batches and save it:
                 loss_value_on_minibatch = loss_function(output, y_minibatch)
-            
+                            
                 #Calculate gradients for all mini-batch on the net with the backward step. The backward() operation is used 
                 #for calculating the gradient of the error with respect to its parameters:
                 loss_value_on_minibatch.backward()
@@ -318,11 +333,24 @@ class Net_training(torch.nn.Module):
 
                 #Print of the loss and updating the globale loss value of a single epoch
                 with torch.no_grad():
-                    #Print of the minibatch
-                    print("\tepoch:{}, minibatch: {}, loss_train: {:.4f}".format(e + 1, nb, loss_value_on_minibatch))
-                    
                     #Accumulate the loss in the training phase loss
                     loss_value_train += loss_value_on_minibatch.item()
+                    
+                    ### R2SCORE MINIBATCH ###
+                    #Put the tensor on CPU and transform it into a numpy array
+                    y_train_np = y_minibatch.cpu().numpy()
+                    output_train_np = output.cpu().numpy()
+                    #R2score minibatch
+                    r2_mb = r2_score(y_train_np, output_train_np)
+                    #Save it
+                    net_train_r2 += r2_mb
+
+                    #Print of the minibatch
+                    print("\tepoch:{}, minibatch: {}, loss_train: {:.4f} r2score: {}%".format(e + 1, nb, loss_value_on_minibatch, r2_mb*100))
+                    
+                    
+            #R2score last epoch train and validation
+            net_train_r2 /= len(dataloader_train)
 
             #loss della training epoch
             loss_value_train /= len(dataloader_train)
@@ -332,78 +360,61 @@ class Net_training(torch.nn.Module):
             
             ### VALIDATION ###
             # Validation of the epoch
-            loss_valid, output_val = Net_training.validate(net, dataloader_val, loss_function, MIN, MAX)
+            loss_valid, output_val, net_val_r2 = Net_training.validate(net, dataloader_val, loss_function)
 
             #Append all losses
             net_val_losses.append(loss_valid)
 
         #Combine the tensors in the list output_val into a single tensor along the samples dimension
         output_val_tensor = torch.cat(output_val, dim=0)
-        
+                
         ### MEAN AND STD OF THE OUTPUT ###
         #Calculate the VALIDATION mean of the output data
         mean_value = torch.mean(output_val_tensor)
 
         # Calculate the VALIDATION standard deviation of the output data
         std_value = torch.std(output_val_tensor)
-
+        ### R2 SCORE PRINT ###
+        print(f'\n\n\n R2 SCORE OF THE TRAINING PHASE LAST EPOCH: {net_train_r2 * 100}%')
         #### SAVING TRAINED NET ####
-        save_net(net,n_epochs, loss_value_train, loss_valid, mean_value, std_value, path_pth, path_txt)
+        save_net(net,n_epochs, loss_value_train, loss_valid, mean_value, std_value, net_val_r2, path_pth, path_txt)
 
-        #### PLOT OF TRAINING AND VALIDATION LOSSES ####
+        #### PLOT OF TRAINING AND VALIDATION LOSSES AND PDF ####
         plot_loss(n_epochs, net_train_losses, net_val_losses, result_path_net)
-
+        Net_training.plot_pdfy(y_val,output_val_tensor, f'{results_path}/NET/val_pdy.png')
+        
         return net_train_losses,net_val_losses
     
-    def plot_pdfy(output_data,path:str):
+    def plot_pdfy(target_data_val, output_data_val,path):
         # Move the output_data tensor from GPU to CPU
-        output_data = output_data.cpu().numpy()
-        # Increase the number of bins for a smoother histogram
-        #num_bins = 200
+        output_data_train_np = target_data_val.detach().cpu().numpy()
+        output_data_val_np = output_data_val.detach().cpu().numpy()
+        
         # Calcola l'istogramma per stimare la PDF
-        hist, bin_edges = np.histogram(output_data, bins='auto', density=True)
+        hist_target, bins_target = np.histogram(output_data_train_np, bins='auto', range=(output_data_train_np.min(), output_data_train_np.max()))
+        hist_val, bins_val = np.histogram(output_data_val_np, bins='auto', range=(output_data_val_np.min(), output_data_val_np.max()))
 
-        # Grafica l'istogramma e la PDF
-        plt.hist(output_data, bins='auto', density=True, alpha=0.7, color='blue', label='Histogram')
-        plt.plot(0.5*(bin_edges[1:] + bin_edges[:-1]), hist, color='red', label='PDF')
-        plt.xlabel('Output')
-        plt.ylabel('Density')
-        plt.legend()
-        plt.title('Probability Density Function (PDF) of Output Data')
+        # Step 3: Normalizza gli istogrammi per ottenere le rispettive PDF
+        pdf_target = hist_target / hist_target.sum()
+        pdf_val = hist_val / hist_val.sum()
+
+        # Calcola i punti medi tra i bin per ottenere le curve delle PDF
+        bin_centers_target = (bins_target[1:] + bins_target[:-1]) / 2
+        bin_centers_val = (bins_val[1:] + bins_val[:-1]) / 2
+
+         # Step 4: Plotta le due curve PDF con colori diversi
+        plt.plot(bin_centers_target, pdf_target, color='b', label='Target')
+        plt.plot(bin_centers_val, pdf_val, color='r', label='MLP output')
+        plt.xlabel('Values')
+        plt.ylabel('Probability Density')
+        plt.title('PDF of the target and input')
         plt.grid(True)
-        
-
-        # Salva l'immagine nel percorso specificato
-        plt.savefig(path)
-    
-        # Mostra il grafico
+        plt.legend()
+        #Save
+        plt.savefig(path)      
+        #Mostra il grafico
         plt.show()
 
-    def plot_pdfy_prova(output_data, path: str):
-        # Converti il tensore in una lista di liste
-        data_list = output_data.tolist()
-
-        # Crea un DataFrame da data_list
-        df = pd.DataFrame(data_list)
-
-        # Print della dimensionalità
-        print("Dimensionalità del DataFrame:", df.shape)
-
-        # Print dei nomi delle colonne
-        print("Nomi delle colonne:", df.columns)
-
-        # Density Plot and Histogram of the data in df
-        sns.histplot(df, kde=True, bins=int(180/5), color='darkblue', 
-                    edgecolor='black', linewidth=1.5)
-
-        plt.title('Density Plot and Histogram')
-        plt.xlabel('Data')
-        plt.ylabel('Density')
-         
-        # Salva l'immagine nel percorso specificato
-        plt.savefig(path)
-        
-        plt.show()
 
 
         

@@ -76,7 +76,7 @@ def cleaning_dataset_function(dataframe): #Clean reduced dataset
 
     return dataframe
 
-def PCA_fun(X, print_info, result_path): #Dimensional reduction Principal Component Analysis
+def PCA_fun(X): #Dimensional reduction Principal Component Analysis
     #Use PCA to reduce dimensionality to 1 dimension
     pca = PCA(n_components=1)
     X_pca_numpy = pca.fit_transform(X)
@@ -222,37 +222,6 @@ def load_data_from_file(filename, num_col = 6):
 
     return X, y
 
-def create_splits_unbalanced(X, y, train_frac, valid_frac, randomize=True):
-    """
-    Creates (randomized) training, validation, test data splits.
-
-    Args:
-        X: dataset (one example per row).
-        y: ground truth labels (vector).
-        train_frac: the fraction of data to be used in the training set.
-        valid_frac: the fraction of data to be used in the validation set.
-        input_norm: function for normalizing X.
-        output_norm: function for normalizing y.
-        randomize (optional): randomize the data before splitting them.
-
-    Returns:
-        The PyTorch tensors X, y (data and targets) for training, validation, and test sets, and normalize respectively in a compact way.
-    """
-    #Randomize data
-    if randomize:
-        #Shuffle the indexes
-        indices = torch.randperm(len(X))
-        #Sheffle the data
-        X, y = X[indices], y[indices]
-
-    #Total samples number
-    n = len(X)
-
-    #Calculate the number of samples that were in training and validation
-    train_size, valid_size = int(n * train_frac), int(n * valid_frac)
-
-    return X[:train_size], y[:train_size], X[train_size:train_size+valid_size], y[train_size:train_size+valid_size], X[train_size+valid_size:], y[train_size+valid_size:]
-
 def create_autoencoder_splits_unbalanced(X, train_frac, valid_frac, randomize=True):
     """
     Creates (randomized) training, validation, test data splits.
@@ -282,13 +251,80 @@ def create_autoencoder_splits_unbalanced(X, train_frac, valid_frac, randomize=Tr
 
     return X[:train_size], X[train_size:train_size+valid_size], X[train_size+valid_size:]
 
+def create_splits_unbalanced(X, y, train_frac, valid_frac, randomize=True, max_min_into_training = True):
+    """
+    Creates (randomized) training, validation, test data splits. Esnure that the max and min value are putted
+    into the training set.
+
+    Args:
+        X: dataset (one example per row).
+        y: ground truth labels (vector).
+        train_frac: the fraction of data to be used in the training set.
+        valid_frac: the fraction of data to be used in the validation set.
+        randomize (optional): randomize the data before splitting them.
+        max_min_into_training(optional): True if you want to include the max and min into the training set.
+    Returns:
+        The PyTorch tensors X, y (data and targets) for training, validation, and test sets.
+    """
+    #Randomize data
+    if randomize:
+        # Shuffle the indexes
+        indices = torch.randperm(len(X))
+        # Shuffle the data
+        X, y = X[indices], y[indices]
+
+    #Total samples number
+    n = len(X)
+
+    #Find the minimum and maximum values
+    min_val = torch.min(X)
+    max_val = torch.max(X)
+
+    #Calculate the number of samples that were in training and validation
+    train_size, valid_size = int(n * train_frac), int(n * valid_frac)
+
+    #Split in training and remaining data
+    train_set_X, train_set_y = X[:train_size], y[:train_size]
+    remaining_X, remaining_y = X[train_size:], y[train_size:]
+
+    #Ensure minimum and maximum values are included in training set if it is true.
+    if max_min_into_training:
+        #Check if min_val is not already in the training set
+        if min_val not in train_set_X:
+            # Find the first occurrence of min_val in the remaining data
+            min_idx = torch.where(remaining_X == min_val)[0][0]
+            # Add the min_val and its corresponding label to the training set
+            train_set_X = torch.cat([train_set_X, remaining_X[min_idx].unsqueeze(0)], dim=0)
+            train_set_y = torch.cat([train_set_y, remaining_y[min_idx].unsqueeze(0)], dim=0)
+            #Remove min_val from the remaining data
+            remaining_X = torch.cat([remaining_X[:min_idx], remaining_X[min_idx+1:]], dim=0)
+            remaining_y = torch.cat([remaining_y[:min_idx], remaining_y[min_idx+1:]], dim=0)
+
+        #Check if max_val is not already in the training set
+        if max_val not in train_set_X:
+            # Find the first occurrence of max_val in the remaining data
+            max_idx = torch.where(remaining_X == max_val)[0][0]
+            # Add the max_val and its corresponding label to the training set
+            train_set_X = torch.cat([train_set_X, remaining_X[max_idx].unsqueeze(0)], dim=0)
+            train_set_y = torch.cat([train_set_y, remaining_y[max_idx].unsqueeze(0)], dim=0)
+            # Remove max_val from the remaining data
+            remaining_X = torch.cat([remaining_X[:max_idx], remaining_X[max_idx+1:]], dim=0)
+            remaining_y = torch.cat([remaining_y[:max_idx], remaining_y[max_idx+1:]], dim=0)
+
+    #The rest of the data goes into the validation and test sets
+    valid_set_X, valid_set_y = remaining_X[:valid_size], remaining_y[:valid_size]
+    test_set_X, test_set_y = remaining_X[valid_size:], remaining_y[valid_size:]
+
+
+    return train_set_X, train_set_y, valid_set_X, valid_set_y, test_set_X, test_set_y, min_val, max_val
+
 '''
             ############################################################################
             #                         SAVE AND PLOT FUNCTIONS
             ############################################################################
 '''
 
-def save_net(model, epoch, epoch_loss_train, epoch_loss_val, mean_value, std_value, path_pth, path_txt):
+def save_net(model, epoch, epoch_loss_train, epoch_loss_val, mean_value, std_value, r2, path_pth, path_txt):
     '''
     Save the "model state" of the net to a .pth file in the specified path
     Args:
@@ -308,7 +344,7 @@ def save_net(model, epoch, epoch_loss_train, epoch_loss_val, mean_value, std_val
     #Write a .txt file to the specified path and writes information regarding the epoch and the loss to which
     #the best trained net belongs
     with open(path_txt, "w") as f:
-        print(f"Checkpoint net:\n\n\tEPOCH:\t{epoch}\n\n\tLOSS TRAIN:\t{epoch_loss_train}\n\n\tLOSS VALIDATION:\t{epoch_loss_val}\n\n\tMEAN VALIDATION:\t{mean_value}\n\n\tSTD VALIDATION:\t{std_value}", file=f)
+        print(f"Checkpoint net:\n\n\tEPOCH:\t{epoch}\n\n\tLOSS TRAIN:\t{epoch_loss_train}\n\n\tLOSS VALIDATION:\t{epoch_loss_val}\n\n\tMEAN VALIDATION:\t{mean_value}\n\n\tSTD VALIDATION:\t{std_value}\n\n\tR2 VALIDATION:\t{r2}", file=f)
 
 def save_net_aut(model, epoch, epoch_loss_train, epoch_loss_val, path_pth, path_txt):
     '''

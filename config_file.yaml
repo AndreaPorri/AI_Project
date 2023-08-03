@@ -39,9 +39,9 @@ loss_function: #Mean Square Error("mse") or Mean Absolute Error("mae")
 optimizer: #Adam("adam") or Stochastic Gradient Descent("sgd") or Root Mean Square Propagation("rmsprop")
     "adam"
 n_epochs:
-    300
+    600
 lr: #Learning rate
-    0.005
+    0.01
 batch_size:
     128
                                 
@@ -69,16 +69,16 @@ result_path_net:
 epochs_net:
     400
 learning_rate_net:
-    0.001
+    0.01
 mini_batch_size_net:
-    64
+    128
 loss_function_net: #Mean Square Error("mse") or Mean Absolute Error("mae")
     "mse"
 optimizer_net: #Adam("adam") or Stochastic Gradient Descent("sgd") or Root Mean Square Propagation("rmsprop")
-    "sgd"
+    "rmsprop"
 
                                 #################################
-                                #            MLP
+                                #              MLP
                                 #################################
 input_size_mlp:
     1
@@ -88,3 +88,11 @@ hidden_layers_mlp:
     [4, 2]
 
 
+                                #################################
+                                #             GMM:
+                                #################################
+
+num_gaussians:
+    32
+n_samples:
+    100000

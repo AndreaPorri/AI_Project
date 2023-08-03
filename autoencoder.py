@@ -205,7 +205,7 @@ class Autoencoder(nn.Module):
 
                 #Calculating the minibatch losses
                 loss = criterion(output, X_val_minibatch)
-
+                
                 #Accumulate the loss of each minibatch
                 val_loss += loss.item()
 
@@ -247,7 +247,6 @@ class Autoencoder(nn.Module):
         #Normalization data
         input_train_tensor, mean_train, std_train = real_norm_input(input_train_tensor)
         input_val_tensor, _, _ = real_norm_input(input_val_tensor, mean_train, std_train)
-
 
         #### DATALOADER ####
         #Convert input_tensor to a PyTorch TensorDataset
@@ -342,6 +341,7 @@ class Autoencoder(nn.Module):
             ### TRAIN ###            
             ### LOOP ON MINI-BATCHES ###
             for idx_batch, X_minibatch in enumerate(dataloader_train):
+                                
                 #Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
                 optimizer.zero_grad()
 
@@ -495,7 +495,7 @@ if __name__ == '__main__':
     ### CREATE THE SETS ###
     #Splitting data in training, validation e test sets(which has 0 samples)
     data_X_train, data_X_val, _ = create_autoencoder_splits_unbalanced(data, 0.85, 0.15)
-
+        
     #Print
     if args.print_info == '1':
         
