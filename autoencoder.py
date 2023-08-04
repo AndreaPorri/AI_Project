@@ -7,14 +7,14 @@
 
 In this file, an autoencoder is defined and trained, from which the encoder part will subsequently be extracted.
 
-Structure of our autoecoder:
-- Encoder:
-    - Input layer con 5 neuroni (corrispondente alla dimensione dell'input)
-    - Hidden layer con 3 neuroni (riduzione dimensionale)
-    - Hidden layer con 1 neurone (rappresentazione compatta)
-- Decoder:
-    - Hidden layer con 3 neuroni (espansione dimensionale)
-    - Output layer con 5 neuroni (corrispondente alla dimensione dell'output)
+Structure of our auto encoder:
+- Encoders:
+    - Input layer with 5 neurons (corresponding to input size)
+    - Hidden layer with 3 neurons (size reduction)
+    - Hidden layer with 1 neuron (compact representation)
+- Decoders:
+    - Hidden layer with 3 neurons (dimensional expansion)
+    - Output layer with 5 neurons (corresponding to output size)
 
 The goal of the autoencoder is to learn a compact representation of the input data in the 1-neuron hidden layer
 and then reconstruct the original input in the 5-neuron output layer.
@@ -133,7 +133,7 @@ class Autoencoder(nn.Module):
     def __init__(self, in_shape = 5, enc_shape = 1): #Autoencoder structure
         super(Autoencoder, self).__init__()
 
-        # Encoder
+        #Encoder
         self.encoder = nn.Sequential(
             nn.Linear(in_shape, 3),
             nn.Tanh(),
@@ -142,7 +142,7 @@ class Autoencoder(nn.Module):
             nn.Tanh()
         )
 
-        # Decoder
+        #Decoder
         self.decoder = nn.Sequential(
             nn.BatchNorm1d(enc_shape),
             nn.Linear(enc_shape, 3),
@@ -153,7 +153,7 @@ class Autoencoder(nn.Module):
 
     def initialize_weights(self): #Weights initialization
         '''
-        Intelligently initializing the weights of my network, randomly but normalized.
+        Intelligently initializing the weights of the network, randomly but normalized.
         '''
         #Cycling on layers
         for module in self.modules():
@@ -164,6 +164,10 @@ class Autoencoder(nn.Module):
                 nn.init.constant_(module.bias.data, 0.0) #0 bias
     
     def forward(self, x): #Calculate the forward outputs
+        '''
+        Function for calculating the step forward, to obtain the output of the network.
+        '''
+        
         # Encoding
         encoded = self.encoder(x)        
         # Decoding
@@ -258,12 +262,13 @@ class Autoencoder(nn.Module):
         dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True, drop_last=True)
         
         #### DEVICE ####
-        #We assume that all the network parameters are on the same device
+        #Assume that all the network parameters are on the same device
         device = next(model.parameters()).device
         
         #Print
         if print_info == '1':
             # Print to verify that everything has been executed correctly, that the objects have been instantiated and the device is defined
+            print('\n\n\nSome useful info about our objects and dimension:\n')
             print(f'\t- The device selected for the training is: {device}')
             print(f'\t- Training dataset object = {dataset_train}')
             print(f'\t- Training dataloader object = {dataloader_train}')
@@ -275,7 +280,7 @@ class Autoencoder(nn.Module):
         #### LOSS FUNCTION SELECTION ####
         print('\n\nLoading the selected loss function...')
 
-        # Function for multi-selection loss function
+        #Function for multi-selection loss function
         if loss_function_choice == 'mse':  #Mean Square Error
             loss_function = nn.MSELoss()
         elif loss_function_choice == 'mae':  #Mean Absolute Error
@@ -288,7 +293,7 @@ class Autoencoder(nn.Module):
         #### OPTIMIZER SELECTION AND APPLICATION ####
         print('\n\nLoading the selected optimizer...')
 
-        # Setup Adam or SGD optimizers for both the generator and the discriminator
+        #Seelect the optimizers for the training
         if optimizer_choice == 'adam': #Adam
             optimizer = optim.Adam(model.parameters(), lr=lr)
         elif optimizer_choice == 'sgd': #Stochastic Gradient Descent 
@@ -302,7 +307,7 @@ class Autoencoder(nn.Module):
         #Print
         if print_info == '1':
             #PRINT OF THE TRAINING FEATURES:
-            print('\n\n\nSome hyperparameters of the network:\n')
+            print('\n\n\nSome autoencoder hyperparameters of the network:\n')
             print(f'\t- Learning rate: {lr}')
             print(f'\t- Epochs: {n_epochs}')
             print(f'\t- Batch size: {batch_size}')   
@@ -318,13 +323,12 @@ class Autoencoder(nn.Module):
 
         #############################################################################
         
-        print('\n\n\tStarting the training loop...')
+        print('\n\nStarting the training loop...')
 
         #Telling the network we are going to train it (and not to simply evaluate it)
         model.train()
 
-        #Create the directory for theAutoencoder results
-        #results_path ='D:/Results'
+        #Create the directory for the Autoencoder results
         createDirectory(results_path)
         createDirectory(f'{results_path}/Autoencoder')
 
@@ -337,8 +341,7 @@ class Autoencoder(nn.Module):
         for epoch in trange(n_epochs):
             #Initializes the loss of the training phase for the current epoch
             epoch_loss_train = 0.0
-
-            ### TRAIN ###            
+          
             ### LOOP ON MINI-BATCHES ###
             for idx_batch, X_minibatch in enumerate(dataloader_train):
                                 
@@ -360,25 +363,25 @@ class Autoencoder(nn.Module):
                 #Update model parameters
                 optimizer.step()
 
-                #Print of the losses and updating the globale loss value of a single epoch
+                #Print of the mini-batch characteristics and cumulate the losses value of the mini-batches for each epoch
                 with torch.no_grad():
                     #Print of the minibatch
                     print('\tepoch:{}, minibatch: {}, loss_train: {:.4f}'.format(epoch+1, idx_batch, loss_train))
                     
-                    # Accumulate the train loss for the epoch
+                    # Accumulate the train loss of the mini-batch for the epochs
                     epoch_loss_train += loss_train.item()
 
-            #loss della training epoch
+            #Loss of the training epoch
             epoch_loss_train /= len(dataloader_train)
 
-            #Save the net losses of each batch within the lists defined earlier
+            #Save in list all the training losses
             net_train_losses.append(epoch_loss_train)
 
             ### VALIDATION ###
             #Validation of the epoch
             loss_valid = Autoencoder.validate(model, dataloader_val, loss_function)
 
-            #Hang up all the losses:
+            #Save in list all the validation losses
             net_val_losses.append(loss_valid)
         
         #### SAVING TRAINED AUTOENCODER ####
@@ -393,31 +396,31 @@ class Autoencoder(nn.Module):
         Predict using the trained autoencoder.
 
         Args:
-            x (torch.Tensor): Input tensor for prediction.
+            x: Input tensor for prediction.
 
         Returns:
-            torch.Tensor: The encoded representation of the input tensor.
-            torch.Tensor: The decoded output tensor.
+            The encoded representation of the input tensor.
         """
-        # Ensure the model is in evaluation mode
+        #Ensure the model is in evaluation mode
         self.eval()
 
-        # Move the input tensor to the same device as the model
+        #Move the input tensor to the same device as the model
         device = next(self.parameters()).device
+
         #Put the input on the device
         x = x.to(device)
 
-        # Encoding
+        #Encoding the 5D input into 1D output
         encoded = self.encoder(x)
 
         return encoded
 
 if __name__ == '__main__':
 
-    ### Terminal ###
+    ### TERMINAL ###
     args = parse_command_line_arguments() #extracts the arguments from the command line and saves them in the 'args' object
     
-    ### Yaml file ###
+    ### YAML ###
     pathConfiguratorYaml = args.pathConfiguratorYaml #extracts the path of the YAML configuration file from the command line and saves it in a variable
     #We assign the values returned by the function, that is the values in the tuple, to the respective variables
     dataroot,results_path,reduce_dataset_autoencoder_path,path_pth_autoencoder,path_txt_autoencoder,image_loss_path,loss_function,optimizer,n_epochs,lr,batch_size = load_hyperparams(pathConfiguratorYaml)
@@ -433,16 +436,14 @@ if __name__ == '__main__':
     #Loading dataframe from csv file
     dataframe = pd.read_csv(dataroot, sep=';') #The .csv file uses ; as a separator instead of space
 
-    #Resizing dataset from original one (I take only 6 columns)
+    #Resizing dataset from original one (take only 6 columns)
     dataset_reduced_dirty = dataset_reduction(dataframe,'NOx(GT)','PT08.S1(CO)','T','RH','PT08.S2(NMHC)','CO(GT)')
-    
     
     #Cleaning the reduced dataset
     dataset_reduced = cleaning_dataset_function(dataset_reduced_dirty).iloc[:, :5]
 
     #Print
     if args.print_info == '1':
-        
         #Check dimensionality of the new dataset
         print('The dimensionality of the reduced and dirty datset is:',dataset_reduced_dirty.shape)
         print('The dimensionality of the reduced datset is:',dataset_reduced.shape)
@@ -452,12 +453,11 @@ if __name__ == '__main__':
         sleep(10)
 
         
-        ### PLOT DATA ###
-        
-        #Create a PCA object with 3 components, instead of 5.
+        ### PLOT 3D GRAPH DATA ###        
+        #Create a PCA object with 3 components, instead of 5
         pca = PCA(n_components=3)
         
-        #Fit and transform the data on a reduced dimensional representatiozn
+        #Fit and transform the data on a reduced dimensional representation
         reduced_data_PLOT = pca.fit_transform(dataset_reduced)
         
         #Create a dataframe with this new data
@@ -471,11 +471,11 @@ if __name__ == '__main__':
         ax.set_ylabel('Dimension 2')
         ax.set_zlabel('Dimension 3')
         ax.set_title('3D Visualization using PCA')
-        plt.savefig(f'{results_path}/Autoencoder/input_data_plot.png')
+        plt.savefig(f'{results_path}/Autoencoder/input_data_3D_plot.png')
         plt.show()
       
     ### SAVE THE NEW DATASET ###
-    #Save the reduced dataset
+    #Save the reduced dataset in a csv file
     create_file_csv(dataset_reduced,reduce_dataset_autoencoder_path)
 
     ### DEVICE ###
@@ -498,7 +498,6 @@ if __name__ == '__main__':
         
     #Print
     if args.print_info == '1':
-        
         #Check dimensionality of the new sets
         print('\n\nThe dimensionality training set:',data_X_train.shape)
         print('The dimensionality validation set:',data_X_val.shape)
