@@ -1,16 +1,16 @@
-########################################################################################################################################
-#YAML CONFIGURATION FILE:
+########################################################################################################
+                                   #YAML CONFIGURATION FILE:
 
-#This file lists all the hyperparameters, parameters, and paths necessary for the proper functioning of the network. These will
-#be divided into sections for better readability.
-########################################################################################################################################
+#This file lists all the hyperparameters, parameters, and paths necessary for the proper functioning 
+#of the network. These will be divided into sections for better readability.
+########################################################################################################
 
                                 #################################
                                 #        DATASET PATH
                                 #################################
-dataroot:
+dataroot: #Dataset path
     "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/AirQualityUCI.csv"
-results_path:
+results_path: #Results directory path
     'D:/Results'             
                
             ###########################################################################
@@ -22,29 +22,29 @@ results_path:
                                 #################################
                                 #            PATHS:
                                 #################################
-reduce_dataset_autoencoder_path:
+reduce_dataset_autoencoder_path: #Path to the new clean and reduced dataset
     "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced_Autoencoder.csv"
-path_pth_autoencoder:
+path_pth_autoencoder: #Path of the autoencoder model
     "D:/Results/Autoencoder/autoencoder_lastEpoch.pth"
-path_txt_autoencoder:
+path_txt_autoencoder: #Path of the autoencoder text file
     "D:/Results/Autoencoder/autoencoder_lastEpoch.txt"
-image_loss_path:
+image_loss_path: #Path of the loss trend image
     "D:/Results/Autoencoder/loss_plot.png"        
 
                                 #################################
                                 #       HYPERPARAMETERS:
                                 #################################
+n_epochs: #Epochs
+    600
+lr: #Learning rate
+    0.01
+batch_size: #Mini-batch dimension
+    128
 loss_function: #Mean Square Error("mse") or Mean Absolute Error("mae")
     "mse"
 optimizer: #Adam("adam") or Stochastic Gradient Descent("sgd") or Root Mean Square Propagation("rmsprop")
     "adam"
-n_epochs:
-    600
-lr: #Learning rate
-    0.01
-batch_size:
-    128
-                                
+                     
             ############################################################################
 
             #                          FILE:   main.py
@@ -54,23 +54,23 @@ batch_size:
                                 #################################
                                 #            PATHS:
                                 #################################
-reduce_dataset_path:
+reduce_dataset_path: #Path to the new clean and reduced dataset
     "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset/dataset_reduced.csv"
-path_pth_net:
+path_pth_net: #Path of the net model
     "D:/Results/NET/net_lastEpoch.pth"
-path_txt_net:
+path_txt_net: #Path of the net text file
     "D:/Results/NET/net_lastEpoch.txt"
-result_path_net:
+result_path_net: #Path of the loss trend image
     "D:/Results/NET/loss_plot.png" 
                                 
                                 #################################
                                 #       HYPERPARAMETERS:
                                 #################################
-epochs_net:
+epochs_net: #Epochs
     400
-learning_rate_net:
+learning_rate_net: #Learning rate
     0.01
-mini_batch_size_net:
+mini_batch_size_net: #Mini-batch dimension
     128
 loss_function_net: #Mean Square Error("mse") or Mean Absolute Error("mae")
     "mse"
@@ -80,11 +80,11 @@ optimizer_net: #Adam("adam") or Stochastic Gradient Descent("sgd") or Root Mean 
                                 #################################
                                 #              MLP
                                 #################################
-input_size_mlp:
+input_size_mlp: #Dimension of the input layer
     1
-output_size_mlp:
+output_size_mlp: #Dimension of the output layer
     1
-hidden_layers_mlp:
+hidden_layers_mlp: #Dimensions list of the hidden layer (the dimensions go from the first element of the list, which corresponds to the first hidden layer, to the last, which corresponds to the last hidden layer)
     [4, 2]
 
 
@@ -92,7 +92,7 @@ hidden_layers_mlp:
                                 #             GMM:
                                 #################################
 
-num_gaussians:
+num_gaussians: #Number of Gaussians we want to use in the GMM sample generator
     32
-n_samples:
+n_samples: #Number of samples which we want generate
     6944
