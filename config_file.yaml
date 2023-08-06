@@ -62,6 +62,8 @@ path_txt_net: #Path of the net text file
     "D:/Results/NET/net_lastEpoch.txt"
 result_path_net: #Path of the loss trend image
     "D:/Results/NET/loss_plot.png" 
+split_path:
+    "C:/Users/andre/OneDrive/Desktop/MAGISTRALE/AI_Project/Dataset"
                                 
                                 #################################
                                 #       HYPERPARAMETERS:

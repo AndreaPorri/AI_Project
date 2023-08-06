@@ -29,11 +29,11 @@ pre-trained autoencoder will be extracted.
 #Import needed libraries, classes and functions
 import torch
 from torch import nn, optim
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 import pandas as pd
+from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
 from functions import *
 import argparse
 import yaml
@@ -47,12 +47,12 @@ torch.manual_seed(0)
 ### TERMINAL ###
 def parse_command_line_arguments():
     """ 
-    Function required for using additional terminal commands necessary for selecting specific parameters needed for the correct execution of DCGAN.
+    Function required for using additional terminal commands necessary for selecting specific choices needed for the correct execution of the autoencoder.
     The main commands are:
 
-        - --pathConfiguratorYaml: takes in input the yaml file path as a string (mandatory command)
+        - --pathConfiguratorYaml: takes in input the yaml file path as a string.
 
-        - --print: takes in input an integer parameter (0 or 1) which tell if you want to print some checks
+        - --print: takes in input an integer parameter (0 or 1) which tell if you want to print some checks (optional command).
     
     """
     #Creates an ArgumentParser object from the argparse library used for analyzing the passed arguments from the command line:
@@ -62,7 +62,7 @@ def parse_command_line_arguments():
     parser.add_argument('--pathConfiguratorYaml', type=str, default='config_file.yaml',
                         help='Insert the path of Yaml file containing all the parameters of the project')
     parser.add_argument('--print_info', type=str, default='0', choices=['1','0'],
-                        help='You have to chose if you want to print some controls and checks')
+                        help='You have to chose if you want to print some controls and checks, "1" if you want.')
         
    
     args = parser.parse_args() #This line of code reads the arguments passed from the command line and compares them with the options defined using the 
@@ -187,12 +187,10 @@ class Autoencoder(nn.Module):
         Returns:
             List of the average validation losses and outputs.
         '''
-        #Recover device through model parameters.
+        #Initialize device, avarage loss, outputs and targets lists
         device = next(model.parameters()).device
-        
-        #Initializing epoch loss with floats.
         val_loss = 0.
-
+        
         #In validation/evaluation don't have to keep track of gradients.
         with torch.no_grad():
             #Let the machine in evaluation mode
@@ -215,10 +213,10 @@ class Autoencoder(nn.Module):
 
         #Calculate the average validation loss
         avg_val_loss = val_loss / len(dataloader_val)
-
+        
         return avg_val_loss
       
-    def training(model, input_train_tensor, input_val_tensor, results_path, path_pth, path_txt, image_loss_path, print_info, loss_function_choice, optimizer_choice, n_epochs, lr, batch_size): #Training of the autoencoder
+    def training(model, input_train_tensor, input_val_tensor, path_pth, path_txt, image_loss_path, print_info, loss_function_choice, optimizer_choice, n_epochs, lr, batch_size): #Training of the autoencoder
         '''
         Training the autoencoder.
 
@@ -274,8 +272,7 @@ class Autoencoder(nn.Module):
             print(f'\t- Training dataloader object = {dataloader_train}')
             print(f'\t- Validation dataset object = {dataset_val}')
             print(f'\t- Validation dataloader object = {dataloader_val}')
-            print(f'\t- Number of datasets training and validation samples = [{len(dataset_train),len(dataset_val)}]')
-            sleep(6)
+            sleep(8)
 
         #### LOSS FUNCTION SELECTION ####
         print('\n\nLoading the selected loss function...')
@@ -327,11 +324,7 @@ class Autoencoder(nn.Module):
 
         #Telling the network we are going to train it (and not to simply evaluate it)
         model.train()
-
-        #Create the directory for the Autoencoder results
-        createDirectory(results_path)
-        createDirectory(f'{results_path}/Autoencoder')
-
+     
         #Initialization of the list of training and validation losses of the all epochs
         net_train_losses = [] 
         net_val_losses = []
@@ -341,7 +334,7 @@ class Autoencoder(nn.Module):
         for epoch in trange(n_epochs):
             #Initializes the loss of the training phase for the current epoch
             epoch_loss_train = 0.0
-          
+            
             ### LOOP ON MINI-BATCHES ###
             for idx_batch, X_minibatch in enumerate(dataloader_train):
                                 
@@ -365,11 +358,12 @@ class Autoencoder(nn.Module):
 
                 #Print of the mini-batch characteristics and cumulate the losses value of the mini-batches for each epoch
                 with torch.no_grad():
+                    #Accumulate the train loss of the mini-batch for the epochs
+                    epoch_loss_train += loss_train.item()
+
                     #Print of the minibatch
                     print('\tepoch:{}, minibatch: {}, loss_train: {:.4f}'.format(epoch+1, idx_batch, loss_train))
                     
-                    # Accumulate the train loss of the mini-batch for the epochs
-                    epoch_loss_train += loss_train.item()
 
             #Loss of the training epoch
             epoch_loss_train /= len(dataloader_train)
@@ -379,21 +373,22 @@ class Autoencoder(nn.Module):
 
             ### VALIDATION ###
             #Validation of the epoch
-            loss_valid = Autoencoder.validate(model, dataloader_val, loss_function)
+            loss_valid= Autoencoder.validate(model, dataloader_val, loss_function)
 
             #Save in list all the validation losses
             net_val_losses.append(loss_valid)
         
+
         #### SAVING TRAINED AUTOENCODER ####
-        save_net_aut(model, epoch, epoch_loss_train, loss_valid, path_pth, path_txt)
+        save_net(model, epoch, epoch_loss_train, loss_valid, path_pth, path_txt,net='Autoencoder')
         #### PLOT OF TRAINING AND VALIDATION LOSSES ####
         plot_loss(n_epochs, net_train_losses, net_val_losses, image_loss_path)
 
-        return net_train_losses,net_val_losses  
+        return net_train_losses, net_val_losses  
 
     def predict_encoder(self, x): #Prediction of the encoder
         """
-        Predict using the trained autoencoder.
+        Predict the encoder output using the trained autoencoder.
 
         Args:
             x: Input tensor for prediction.
@@ -425,8 +420,10 @@ if __name__ == '__main__':
     #We assign the values returned by the function, that is the values in the tuple, to the respective variables
     dataroot,results_path,reduce_dataset_autoencoder_path,path_pth_autoencoder,path_txt_autoencoder,image_loss_path,loss_function,optimizer,n_epochs,lr,batch_size = load_hyperparams(pathConfiguratorYaml)
 
-    
-    
+    ### DIRECTORY AUTOENCODER RESULTS ###
+    createDirectory(results_path)
+    createDirectory(f'{results_path}/Autoencoder')
+
     ##########################################################################################                                    
                                         
                             ### LOAD AND PREPROCESS DATASET ###
@@ -537,4 +534,4 @@ if __name__ == '__main__':
     data_X_val = data_X_val.to(my_device)
 
     #Training the network
-    Autoencoder.training(autoencoder, data_X_train, data_X_val, results_path, path_pth_autoencoder, path_txt_autoencoder, image_loss_path, args.print_info, loss_function, optimizer, n_epochs, lr, batch_size)
+    Autoencoder.training(autoencoder, data_X_train, data_X_val, path_pth_autoencoder, path_txt_autoencoder, image_loss_path, args.print_info, loss_function, optimizer, n_epochs, lr, batch_size)

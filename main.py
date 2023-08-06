@@ -1,14 +1,44 @@
 '''
+                        ############################################################
 
+                                        MLP AND GMM GENERATORATING
 
+                        ############################################################
+
+The provided code train/validate/evaluate a Multi-Layer Perceptron (MLP) and after using a GMM generate new artificial samples
+which will be provide to this MLP in order to get results, after the pdf will be compared.
+The code performs the following steps, which are briefly explained below:
+
+1. It parses command-line arguments, such as specifying the YAML configuration file,
+   choosing the training or evaluation phase, selecting dimensional reduction method (autoencoder or PCA),
+   and other parameters. The two special functions loads hyperparameters from the specified YAML configuration file.
+
+3. Loads the dataset from a CSV file, reduces its dimensionality by selecting specific columns, and then cleans it.
+
+4. Splits the dataset into training, validation, and test sets.
+
+5. Initializes the MLP architecture, applies normalization to the input data, and performs a data preprocessing for the target data.
+
+6. If the chosen dimensional reduction method is "autoencoder," it loads a pre-trained autoencoder model and 
+   applies the encoder to the input data. After that the input is a 1D tensor.
+
+7. If the chosen dimensional reduction method is "PCA," it applies Principal Component Analysis (PCA) to the input data.
+   After that the input is a 1D tensor.
+
+8. If the configuration is set to "train," the code proceeds with the training phase of the MLP using the specified hyperparameters,
+   the 1D input and the preprocessed 1D outputs.
+
+9. If the configuration is set to "eval," the code performs inference on the test set using the trained MLP model. It calculates the R2 score for the test set.
+
+10. Then generates new artificial samples using the parameters of a Gaussian Mixture Model (GMM) specified in the
+    YAML configuration file. Then we pass this artificial input throught the pre-trained MLP obtaining the outputs.
+    Then visualizes the results using box plots and probability density plots for the real and artificial X and y pdf.
 
 '''
-
 
 #Import needed libraries, classes and functions
 import pandas as pd
 import torch
-import torch.nn as nn
 import argparse
 import yaml
 from sklearn.metrics import r2_score
@@ -24,23 +54,27 @@ from time import sleep
 ### TERMINAL ###
 def parse_command_line_arguments():
     """
-    Function required for using additional terminal commands necessary for selecting specific parameters needed for the correct execution of DCGAN.
+    Function required for using additional terminal commands necessary for selecting specific choices needed for the correct execution of MLP.
     The main commands are:
 
-        - --pathConfiguratorYaml: takes in input the yaml file path as a string (mandatory command)
+        - --pathConfiguratorYaml: takes in input the yaml file path as a string
 
         - --config: takes in input "train" or "eval" for selecting the training or the evaluation phase, if not specified the default value is "train" (optional command).
                     Choices: 
                     - train ---> training phase
-                    - eval ---> evaluation evaluation
+                    - eval ---> evaluation phase
+                    - generating ---> Generating GMM and evaluation phase
 
-        - --print_info: takes in input an integer parameter (0 or 1) which tell if you want to print some checks
+        - --print_info: takes in input a string parameter ('0' or '1') which tell if you want to print some checks (optional command).
     
         - --dimensional_red_choice: takes in input "autoencoder" or "PCA" to choose the dimensional reduction method (optional command).
                     Choices:
                     - autoencoder ---> Autoencoder method
                     - PCA ---> Principal Component Analysis method
-    
+        - --target_sel: takes in input "skewness" or "no_skewness" to choose if you want remove the skewness problem from the target or not (optional command).
+                    Choices:
+                    - skewness ---> Target
+                    - no_skewness ---> sqrt(Target)
     """
 
     #Creates an ArgumentParser object from the argparse library used for analyzing the passed arguments from the command line:
@@ -49,14 +83,14 @@ def parse_command_line_arguments():
     #Add the arguments to the ArgumentParser object:
     parser.add_argument('--pathConfiguratorYaml', type=str, default='config_file.yaml',
                         help='Insert the path of Yaml file containing all the parameters of the project')
-    parser.add_argument('--config', type=str, default='train', choices=['train', 'eval'],
-                        help='You have to chose the training or evaluation configuration')
+    parser.add_argument('--config', type=str, default='train', choices=['train', 'eval', 'generating'],
+                        help='You have to chose the training, evaluation or generating configuration')
     parser.add_argument('--print_info', type=str, default='0', choices=['1','0'],
                         help='You have to chose if you want to print some controls and checks')
     parser.add_argument('--dimensional_red_choice', type=str, default='autoencoder', choices=['autoencoder', 'PCA'],
                         help='You have to choose the dimensional reduction method')
     parser.add_argument('--target_sel', type=str, default='skewness', choices=['skewness', 'no_skewness'],
-                        help='You have to choose the dimensional autoeencoder model method')
+                        help='You have to choose if you want, or not, fix the problem of positive skewness on the input data')
             
    
     args = parser.parse_args() #This line of code reads the arguments passed from the command line and compares them with the options defined using the 
@@ -94,6 +128,7 @@ def load_hyperparams(pathConfiguratorYaml: str):
     path_pth_net = yaml_configurator['path_pth_net']
     path_txt_net = yaml_configurator['path_txt_net']
     result_path_net = yaml_configurator['result_path_net']
+    split_path = yaml_configurator['split_path']
     #MLP ARCHITECTURE
     input_size_mlp = yaml_configurator["input_size_mlp"]
     output_size_mlp = yaml_configurator["output_size_mlp"]
@@ -111,7 +146,7 @@ def load_hyperparams(pathConfiguratorYaml: str):
     
 
     #The function returns all these variablesas a tuple, returning all the parameters as individual variables:
-    return dataroot,results_path,reduce_dataset_path,path_pth_autoencoder,path_pth_net,path_txt_net,result_path_net,input_size_mlp,output_size_mlp,hidden_layers_mlp,epochs_net,learning_rate_net,mini_batch_size_net,loss_function_net,optimizer_net,num_gaussians,n_samples
+    return dataroot,results_path,reduce_dataset_path,path_pth_autoencoder,path_pth_net,path_txt_net,result_path_net,split_path,input_size_mlp,output_size_mlp,hidden_layers_mlp,epochs_net,learning_rate_net,mini_batch_size_net,loss_function_net,optimizer_net,num_gaussians,n_samples
 
 
 ################################################################################
@@ -124,482 +159,508 @@ def load_hyperparams(pathConfiguratorYaml: str):
 ### START ###
 if __name__ == "__main__":
     
-    ### Terminal ###
+    ### TERMINAL ###
     args = parse_command_line_arguments() #extracts the arguments from the command line and saves them in the "args" object
     
-    ### Yaml file ###
+    ### YAML ###
     pathConfiguratorYaml = args.pathConfiguratorYaml #extracts the path of the YAML configuration file from the command line and saves it in a variable
     #We assign the values returned by the function, that is the values in the tuple, to the respective variables
-    dataroot, results_path, reduce_dataset_path, path_pth_autoencoder, path_pth_net, path_txt_net, result_path_net, input_size_mlp, output_size_mlp, hidden_layers_mlp, epochs_net, learning_rate_net, mini_batch_size_net, loss_function_net, optimizer_net,num_gaussians,n_samples = load_hyperparams(pathConfiguratorYaml)
+    dataroot, results_path, reduce_dataset_path, path_pth_autoencoder, path_pth_net, path_txt_net, result_path_net, split_path, input_size_mlp, output_size_mlp, hidden_layers_mlp, epochs_net, learning_rate_net, mini_batch_size_net, loss_function_net, optimizer_net,num_gaussians,n_samples = load_hyperparams(pathConfiguratorYaml)
 
+    ### RESULT DIRECTORY ###
+    createDirectory(results_path)
+    createDirectory(f'{results_path}/NET')
 
-    ##########################################################################################                                    
-                                        
-                            ### LOAD AND PREPROCESS DATASET ###
-
-    ##########################################################################################
-    #Loading dataframe from csv file
-    dataframe = pd.read_csv(dataroot, sep=";") #The .csv file uses ; as a separator instead of space
-    
-    #Resizing dataset from original one (I take only 6 columns)
-    dataset_reduced_dirty = dataset_reduction(dataframe,"NOx(GT)","PT08.S1(CO)","T","RH","PT08.S2(NMHC)","CO(GT)")
-          
-    #Cleaning the reduced dataset
-    dataset_reduced = cleaning_dataset_function(dataset_reduced_dirty)
-    
-    #Print
-    if args.print_info == '1':
-        #Print of the shape of the dataset and his data
-        print('The dimensionality of the reduced and dirty datset is:',dataset_reduced_dirty.shape)
-        print('The dimensionality of the reduced datset is: ',dataset_reduced.shape)
-        sleep(4)
-        print('\n\nSome rows of the reduced dataset: \n',dataset_reduced.head(5))
-        sleep(8)
-
-    ### SAVE REDUCED DATASET ###
-    create_file_csv(dataset_reduced,reduce_dataset_path)
-    
     ### DEVICE ###
     my_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    ##########################################################################################                                    
-                                        
-                         ### TRAINING, VALIDATION AND TEST SETS ###
+    '''             #################################################################
 
-    ##########################################################################################
+                                      #### TRAINING PHASE ####
 
-    #Load the data from the new CSV file and split into input and target
-    data_X, data_y = load_data_from_file(reduce_dataset_path)
-
-    #Find Max and Min of the dataset
-    global_min_target = torch.min(data_y)
-    global_max_target = torch.max(data_y)
-    
-    ### CREATE THE SETS ###
-    data_X_train, data_y_train, data_X_val, data_y_val, data_X_test, data_y_test, max_val, min_val = create_splits_unbalanced(data_X, data_y, 0.7, 0.15)
-
-    ##########################################################################################                                    
-                                        
-                            ### INITIALIZATION OF THE NETWORK ###
-
-    ##########################################################################################
-
-                                ###############################
-                                         ### MLP ###
-                                ###############################
-   
-    #Create MLP architecture
-    mlp = MLP(input_size_mlp, output_size_mlp, hidden_layers_mlp)
-    
-    #Initializing weights
-    mlp.initialize_weights()
-
-    #Move the model to the selected device
-    mlp.to(my_device)
-
-    ##################################################################################
-                                        #Data
-    ##################################################################################
-    '''             ################################################
-                        ### PREPROCESS INPUT AND TARGET ###
-                    ################################################   
+                    ################################################################# 
     '''
-    ### INPUT ###
-    #Normalization data
-    data_X_train, mean_train, std_train = real_norm_input(data_X_train)
-    data_X_val, _, _ = real_norm_input(data_X_val, mean_train, std_train)
-    data_X_test, _, _ = real_norm_input(data_X_test, mean_train, std_train)
     
+    if args.config == 'train':
+        ##########################################################################################                                    
+                                            
+                                ### LOAD AND REDUCE DATASET ###
 
-    ### OUTPUT ###
-    #Reduction to [0,1] the output
-    #Normal target affected by positive skewness
-    if args.target_sel == 'skewness':
-        data_y_train = restrict_output_data(data_y_train, global_min_target, global_max_target)
-        data_y_val = restrict_output_data(data_y_val, global_min_target, global_max_target)
-        data_y_test = restrict_output_data(data_y_test, global_min_target, global_max_target)
-    #Target not affected by positive skewness
-    if args.target_sel == 'no_skewness':
-        data_y_train = torch.sqrt(restrict_output_data(data_y_train, global_min_target, global_max_target))
-        data_y_val = torch.sqrt(restrict_output_data(data_y_val, global_min_target, global_max_target))
-        data_y_test = torch.sqrt(restrict_output_data(data_y_test, global_min_target, global_max_target))
-
-    #Print
-    if args.print_info == '1':
-        #Print of mean and STD of the various set:
-        print(f'\n\n\nMEAN-MEDIAN-STD TRAIN: {torch.mean(data_y_train)}-{torch.median(data_y_train)}-{torch.std(data_y_train)}')
-        print(f'MEAN-MEDIAN-STD VAL: {torch.mean(data_y_val)}-{torch.median(data_y_val)}-{torch.std(data_y_val)}')
-        print(f'MEAN-MEDIAN-STD TEST: {torch.mean(data_y_test)}-{torch.median(data_y_test)}-{torch.std(data_y_test)}')
-        print('\n\n\n')
-        sleep(10)
-
-    ### PUT DATA ON THE DEVICE ###
-    #Move the training data to the selected device
-    data_X_train = data_X_train.to(my_device)
-    data_y_train = data_y_train.to(my_device)
-    data_X_val = data_X_val.to(my_device)
-    data_y_val = data_y_val.to(my_device)
-    data_X_test = data_X_test.to(my_device)
-    data_y_test = data_y_test.to(my_device)
-    
-                    ################################################
-                        ### DIMESIONALITY REDUCTION ENCODER ###
-                    ################################################
-    
-    ### ENCODER PREDICTION + MLP ###
-    if args.dimensional_red_choice == 'autoencoder':
-    
-        #Loading the previously trained and saved autoencoder model
-        autoencoder = Autoencoder() #Create the autoencoder object
-        autoencoder.load_state_dict(torch.load(path_pth_autoencoder)) #Load the model onto that object
-
+        ##########################################################################################
         
-        #Apply the prediction of the encoder on the input data
-        data_X_train = autoencoder.predict_encoder(data_X_train).detach().to(my_device)
-        data_X_val = autoencoder.predict_encoder(data_X_val).detach().to(my_device)
-        data_X_test = autoencoder.predict_encoder(data_X_test).detach().to(my_device)
+        #Loading dataframe from csv file
+        dataframe = pd.read_csv(dataroot, sep=";") #The .csv file uses ; as a separator instead of space
+        
+        #Resizing dataset from original one (I take only 6 columns)
+        dataset_reduced_dirty = dataset_reduction(dataframe,"NOx(GT)","PT08.S1(CO)","T","RH","PT08.S2(NMHC)","CO(GT)")
+            
+        #Cleaning the reduced dataset
+        dataset_reduced = cleaning_dataset_function(dataset_reduced_dirty)
         
         #Print
         if args.print_info == '1':
-            
+            #Print of the shape of the dataset and his data
+            print('Some dataset information:')
+            print('\t- The dimensionality of the reduced and dirty datset is:',dataset_reduced_dirty.shape)
+            print('\t- The dimensionality of the reduced datset is: ',dataset_reduced.shape)
+            print('\nSome rows of the reduced dataset: \n',dataset_reduced.head(5))
+            sleep(8)
 
-            #Architecture
-            print(f'\n\n\t\t- Encoder Architecture:')
-            print(autoencoder.encoder)
-            print(f'\n\n\t\t- MLP Architecture:')
-            print(mlp)
-            sleep(10)
+        ### SAVE REDUCED DATASET ###
+        create_file_csv(dataset_reduced,reduce_dataset_path)
 
-            #MAX E MIN SETS
-            print('MAX: ',torch.max(data_X_train),torch.max(data_X_val),torch.max(data_X_test))
-            print('MIN: ',torch.min(data_X_train),torch.min(data_X_val),torch.min(data_X_test))
-            sleep(5)
-            
-            ### PLOT OF THE NEW DATA ###
-            # Convert x_values and y_values to numpy arrays
-            x_values = data_X_train.clone().detach().cpu().numpy()
-            y_values = data_y_train.clone().detach().cpu().numpy()
-            # For plot: consider every 100th sample
-            '''sample_interval = 100
-            x_plot = x_values[::sample_interval]
-            y_plot = y_values[::sample_interval]'''
+        ##########################################################################################                                    
+                                            
+                            ### TRAINING, VALIDATION AND TEST SETS ###
 
-            #Print of mean and STD of the various set:
-            print(f'\n\n\nMEAN-MEDIAN-STD INPUT: {np.mean(x_values)}-{np.median(x_values)}-{np.std(x_values)}')
-            print(f'MEAN-MEDIAN-STD OUTPUT: {np.mean(y_values)}-{np.median(y_values)}-{np.std(y_values)}')
-            print('\n\n\n')
-            sleep(10)
-            #plot
-            plt.figure(figsize=(8, 6))
-            plt.scatter(x_values, y_values, s=50, marker='o', label='Points')
-            plt.xlabel('X-input')
-            plt.ylabel('Y-target')
-            plt.title('Plot of our data')
-            plt.grid(True)
-            plt.legend()
-            plt.savefig(f'{results_path}/NET/new_input_data_encoded_MLP.png')
-            plt.show()
-        #Define the architecture for training
-        net = mlp
+        ##########################################################################################
+
+        #Load the data from the new CSV file and split into input and target
+        data_X, data_y = load_data_from_file(reduce_dataset_path)
+
+        ### MAX AND MIN TARGET FOR PREPROCESS TARGET ###
+        global_min_target = torch.min(data_y)
+        global_max_target = torch.max(data_y)
         
+        ### CREATE THE SETS ###
+        data_X_train, data_y_train, data_X_val, data_y_val, data_X_test, data_y_test, max_val, min_val = create_splits_unbalanced(data_X, data_y, 0.7, 0.15)
 
-    #DIMESIONALITY REDUCTION PCA
-    if args.dimensional_red_choice == 'PCA':
+        #Print
+        if args.print_info == '1':
+            #Shapes of the three sets
+            print('\n\nShapes of the input and target of the three sets:')
+            print(f'\t- Shapes input training sets: {data_X_train.shape}')
+            print(f'\t- Shapes output training sets: {data_y_train.shape}')
+            print(f'\t- Shapes input validation sets: {data_X_val.shape}')
+            print(f'\t- Shapes output validation sets: {data_y_val.shape}')
+            print(f'\t- Shapes input test sets: {data_X_test.shape}')
+            print(f'\t- Shapes output test sets: {data_y_test.shape}\n\n')
+
+
+        ##########################################################################################                                    
+                                            
+                                ### INITIALIZATION OF THE NETWORK ###
+
+        ##########################################################################################
+                                    ###############################
+                                            ### MLP ###
+                                    ###############################
+    
+        #Create MLP architecture
+        mlp = MLP(input_size_mlp, output_size_mlp, hidden_layers_mlp)
+        
+        #Initializing weights
+        mlp.initialize_weights()
+
+        #Move the model to the selected device
+        mlp.to(my_device)
+
+        ##################################################################################
+
+                                            #Data
+
+        ##################################################################################
+                        ################################################
+                            ### PREPROCESS INPUT AND TARGET ###
+                        ################################################   
+        ### INPUT ###
+        #Normalization data
+        data_X_train, mean_train, std_train = real_norm_input(data_X_train)
+        data_X_val, _, _ = real_norm_input(data_X_val, mean_train, std_train)
+        data_X_test, _, _ = real_norm_input(data_X_test, mean_train, std_train)
+
+        ### TARGET ###
+        #Preprocess the target to [0,1]
+        #Normal target affected by positive skewness
+        if args.target_sel == 'skewness':
+            data_y_train = restrict_output_data(data_y_train, global_min_target, global_max_target)
+            data_y_val = restrict_output_data(data_y_val, global_min_target, global_max_target)
+            data_y_test = restrict_output_data(data_y_test, global_min_target, global_max_target)
+        #Target not affected by positive skewness
+        if args.target_sel == 'no_skewness':
+            data_y_train = torch.sqrt(restrict_output_data(data_y_train, global_min_target, global_max_target))
+            data_y_val = torch.sqrt(restrict_output_data(data_y_val, global_min_target, global_max_target))
+            data_y_test = torch.sqrt(restrict_output_data(data_y_test, global_min_target, global_max_target))
+
+        #Print
+        if args.print_info == '1':
+            #Print of mean and STD of the various set:
+            print(f'\nCharacteristics of the target 1D data preprocessed with {args.target_sel} problem: ')
+            print(f'\t- MEAN-MEDIAN-STD-MIN-MAX TARGET TRAIN: {torch.mean(data_y_train)} / {torch.median(data_y_train)} / {torch.std(data_y_train)} / {torch.min(data_y_train)} / {torch.max(data_y_train)}')
+            print(f'\t- MEAN-MEDIAN-STD-MIN-MAX TARGET VAL: {torch.mean(data_y_val)} / {torch.median(data_y_val)} / {torch.std(data_y_val)} / {torch.min(data_y_train)} / {torch.max(data_y_train)}')
+            print(f'\t- MEAN-MEDIAN-STD-MIN-MAX TARGET TEST: {torch.mean(data_y_test)} / {torch.median(data_y_test)} / {torch.std(data_y_test)} / {torch.min(data_y_train)} / {torch.max(data_y_train)}')
+            sleep(10)
+        
+        #Put the target data onto the correct device
+        data_y_train = data_y_train.to(my_device)
+        data_y_val = data_y_val.to(my_device)
+        data_y_test = data_y_test.to(my_device)
+        
+                        ################################################
+                            ### DIMESIONALITY REDUCTION ENCODER ###
+                        ################################################
+        
+        ### ENCODER PREDICTION + MLP ###
+        if args.dimensional_red_choice == 'autoencoder':
             
-            #Take the MLP part as the whole Network
+            print('\n\n\nEncoder method for DR is selected...')
+            sleep(6)
+            
+            ### NET FOR TRAINING AND EVALUATION ###
             net = mlp
 
-            #Put the data in CPU
-            data_X_train_cpu = data_X_train.cpu()
-            data_X_val_val = data_X_val.cpu()
-            data_X_test_cpu = data_X_test.cpu()
-            #Make the dimensional reduction with PCA
-            data_X_train = PCA_fun(data_X_train_cpu).to(my_device)
-            data_X_val = PCA_fun(data_X_val_val).to(my_device)
-            data_X_test = PCA_fun(data_X_test_cpu).to(my_device)
+            ### AUTOENCODER ###
+            #Loading the previously trained and saved autoencoder model
+            autoencoder = Autoencoder() #Create the autoencoder object
+            autoencoder.load_state_dict(torch.load(path_pth_autoencoder)) #Load the model onto that object
 
+            ### DIMENSIONAL REDUCTION ENCODER ###
+            #Apply the prediction of the encoder on the input data, so we obtain the dimensional reduction
+            data_X_train = autoencoder.predict_encoder(data_X_train).detach().to(my_device)
+            data_X_val = autoencoder.predict_encoder(data_X_val).detach().to(my_device)
+            data_X_test = autoencoder.predict_encoder(data_X_test).detach().to(my_device)
             
             #Print
             if args.print_info == '1':
-                #Architecture
-                print(f'\n\n\t\t- MLP Architecture:')
+                
+                ### Architecture of the Encoder and MLP ###
+                print(f'\n- Encoder Architecture:')
+                print(autoencoder.encoder)
+                print(f'\n- MLP Architecture:')
                 print(mlp)
                 sleep(10)
 
-                #MAX E MIN SETS
-                print('MAX: ',torch.max(data_X_train),torch.max(data_X_val),torch.max(data_X_test))
-                print('MIN: ',torch.min(data_X_train),torch.min(data_X_val),torch.min(data_X_test))
-                sleep(5)
-
-                ### PLOT OF THE NEW DATA ###
-                # Convert x_values and y_values to numpy arrays
-                x_values = data_X_train.clone().detach().cpu().numpy()
-                y_values = data_y_train.clone().detach().cpu().numpy()
+                ### INPUT ###
+                #Characteristic of the input 1D dimensional reduced
+                print('\nCharacteristics of the normalized preprocessed input 1D: ')
+                print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT TRAIN: {torch.mean(data_X_train)} / {torch.median(data_X_train)} / {torch.std(data_X_train)} / {torch.min(data_X_train)} / {torch.max(data_X_train)}')
+                print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT VAL: {torch.mean(data_X_val)} / {torch.median(data_X_val)} / {torch.std(data_X_val)} / {torch.min(data_X_val)} / {torch.max(data_X_val)}')
+                print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT TEST: {torch.mean(data_X_test)} / {torch.median(data_X_test)} / {torch.std(data_X_test)} / {torch.min(data_X_test)} / {torch.max(data_X_test)}')
+                sleep(8)
                 
-                #plot
-                plt.figure(figsize=(8, 6))
-                plt.scatter(x_values, y_values, s=50, marker='o', label='Points')
-                plt.xlabel('X-axis')
-                plt.ylabel('Y-axis')
-                plt.title('Plot of our PCA data')
-                plt.grid(True)
-                plt.legend()
-                plt.savefig(f'{results_path}/NET/new_input_data_encoded_MLP.png')
-                plt.show()
+                ### PLOT OF THE NEW DATA ###
+                plot_initial_data_afterDR(data_X_train, data_y_train, 'Preprocessed data points of the training set - Encoder', f'{results_path}/NET/training_new_data_ENCODER.png')
+                plot_initial_data_afterDR(data_X_val, data_y_val, 'Preprocessed data points of the validation set - Encoder', f'{results_path}/NET/validation_new_data_ENCODER.png')
+                plot_initial_data_afterDR(data_X_test, data_y_test, 'Preprocessed data points of the test set - Encoder', f'{results_path}/NET/test_new_data_ENCODER.png')
 
-    ### TAKE MAX AND MIN OF TRAINING SET (TO RESTRICT THE GMM GENERATION) ###
-    min_train = torch.min(data_X_train)
-    max_train = torch.max(data_X_train)
 
-    #Print
-    if args.print_info == '1':
-        print(f'MEAN dei 3 set (tr,v,te): {torch.mean(data_X_train)} e {torch.mean(data_X_val)} e {torch.mean(data_X_test)}')
-        print(f'STD dei 3 set (tr,v,te): {torch.std(data_X_train)} e {torch.std(data_X_val)} e {torch.std(data_X_test)}')
-        sleep(5)
-    #################################################################
+        #DIMESIONALITY REDUCTION PCA
+        if args.dimensional_red_choice == 'PCA':
+                
+                print('PCA method for DR is selected ...')
+                sleep(6)
+                
+                ### NET FOR TRAINING AND EVALUATION ###
+                net = mlp
 
-                        #### TRAINING PHASE ####
+                ### DIMENSIONAL REDUCTION PCA ###
+                data_X_train = PCA_fun(data_X_train.cpu()).to(my_device)
+                data_X_val = PCA_fun(data_X_val.cpu()).to(my_device)
+                data_X_test = PCA_fun(data_X_test.cpu()).to(my_device)
 
-    #################################################################
-    if args.config == 'train':
-    
-        #### TRAINING LOOP ####
-        #Training the network
+                
+                #Print
+                if args.print_info == '1':
+                    ### Architecture of the PCA and MLP ###
+                    print(f'\n\n- PCA Class:')
+                    print(PCA)
+                    print(f'\n- MLP Architecture:')
+                    print(mlp)
+                    sleep(10)
+
+                    ### INPUT ###
+                    #Characteristic of the input 1D dimensional reduced
+                    print('\nCharacteristics of the normalized preprocessed input 1D: ')
+                    print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT TRAIN: {torch.mean(data_X_train)} / {torch.median(data_X_train)} / {torch.std(data_X_train)} / {torch.min(data_X_train)} / {torch.max(data_X_train)}')
+                    print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT VAL: {torch.mean(data_X_val)} / {torch.median(data_X_val)} / {torch.std(data_X_val)} / {torch.min(data_X_val)} / {torch.max(data_X_val)}')
+                    print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT TEST: {torch.mean(data_X_test)} / {torch.median(data_X_test)} / {torch.std(data_X_test)} / {torch.min(data_X_test)} / {torch.max(data_X_test)}')
+                    sleep(8)
+
+                    
+                    ### PLOT OF THE NEW DATA ###    
+                    plot_initial_data_afterDR(data_X_train, data_y_train, 'Preprocessed data points of the training set - PCA', f'{results_path}/NET/training_new_data_PCA.png')
+                    plot_initial_data_afterDR(data_X_val, data_y_val, 'Preprocessed data points of the validation set - PCA', f'{results_path}/NET/validation_new_data_PCA.png')
+                    plot_initial_data_afterDR(data_X_test, data_y_test, 'Preprocessed data points of the test set - PCA', f'{results_path}/NET/test_new_data_PCA.png')
+
+
+        #### TRAINING THE NETWORK ####
         Net_training.training(net, data_X_train, data_X_val, data_y_train, data_y_val, path_pth_net, path_txt_net, results_path, result_path_net, args.print_info, epochs_net, learning_rate_net, mini_batch_size_net, loss_function_net, optimizer_net)
         
-    #################################################################
+        ### CREATE THE CSV FILE OF THIS SPLIT ###
+        create_file_csv(pd.DataFrame(data_X_train.cpu().numpy()),f'{split_path}/X_train.csv')
+        create_file_csv(pd.DataFrame(data_X_val.cpu().numpy()),f'{split_path}/X_val.csv')
+        create_file_csv(pd.DataFrame(data_X_test.cpu().numpy()),f'{split_path}/X_test.csv')
+        create_file_csv(pd.DataFrame(data_y_train.cpu().numpy()),f'{split_path}/y_train.csv')
+        create_file_csv(pd.DataFrame(data_y_val.cpu().numpy()),f'{split_path}/y_val.csv')
+        create_file_csv(pd.DataFrame(data_y_test.cpu().numpy()),f'{split_path}/y_test.csv')          
+    '''
+                    #################################################################
 
-                    #### EVALUATION PHASE ####
+                                    #### EVALUATION PHASE ####
 
-    #################################################################
+                    #################################################################
+    
+    '''
     if args.config == 'eval':
+        
+        ### DIRECTORY FOR EVALUATION PART ###
+        createDirectory(f'{results_path}/Evaluation')
 
+        ### LOAD THE TEST SET ###
+        data_X_test = torch.tensor(pd.read_csv(f'{split_path}/X_test.csv').to_numpy()).to(my_device)
+        data_y_test = torch.tensor(pd.read_csv(f'{split_path}/y_test.csv').to_numpy()).to(my_device)
+   
+        ### LOAD THE PRETRAINED NET ### 
+        net = MLP(input_size_mlp, output_size_mlp, hidden_layers_mlp).to(my_device)
+        net.load_state_dict(torch.load(path_pth_net))
+                
         #################################################################
 
                         #### INFERENCE ON TEST SET ####
 
         #################################################################
 
-        #Directory to save the evaluation part
-        createDirectory(results_path)
-        createDirectory(f'{results_path}/Evaluation')
-        
-        #Test target reshape
-        data_y_test = data_y_test.reshape(-1,1)
-        
-        #Load net
-        net.load_state_dict(torch.load(path_pth_net))
-        
-        #Print
-        if args.print_info == '1':
-            #Input Max and Min
-            print('Min e Max of the input after the encoding: ',torch.min(data_X_test),torch.max(data_X_test))
-            #Input shape
-            print('Input shape: ',data_X_test.shape)
-
-        ### PREDICTION ###
+        ### PREDICTION ON TEST SET ###
         outputs_test = Net_training.predict(net,data_X_test.float())
-        outputs_train = Net_training.predict(net,data_X_train.float())
-        outputs_val = Net_training.predict(net,data_X_val.float())
-        #Concatenation for the box plot
-        concatenated_tensor_output_boxp = torch.cat((outputs_test, outputs_train, outputs_val), dim=0)
-        concatenated_tensor_input_boxp = torch.cat((data_X_train, data_X_val, data_X_test), dim=0)
-
-        
+                
         #Print
         if args.print_info == '1':
             #Calculation of mean and std target and output
-            print(f'MEAN E STD TARGET:{torch.mean(data_y_test.float())},{torch.std(data_y_test.float())}')
-            print(f'MEAN E STD OUTPUT:{torch.mean(outputs_test)},{torch.std(outputs_test)}')
+            print('\n\nMean e Std of the test set part:')
+            print(f'\t- MEAN E STD TARGET:{torch.mean(data_y_test.float())},{torch.std(data_y_test.float())}')
+            print(f'\t- MEAN E STD OUTPUT:{torch.mean(outputs_test)},{torch.std(outputs_test)}')
+            print('Shape of the tensors:')
+            print('\t- Input sape: ',data_X_test.shape)
+            print('\t- Target sape: ',data_y_test.shape)
+            print('\t- Output sape: ',outputs_test.shape)
+            sleep(10)
 
         ### R2SCORE TEST ###
-        #Pute the tensor in CPU and transform it into a numpy array
+        #Put the tensor in CPU and transform it into a numpy array
         test_y_np = data_y_test.cpu().numpy()
         outputs_test_np = outputs_test.cpu().numpy()
         #R2 score of the test set
         r2_test = r2_score(test_y_np, outputs_test_np)
         #Print r2 score
-        print(f'\n\nR2 SCORE OF THE TEST PHASE LAST EPOCH: {r2_test * 100}%')
+        print(f'\nR2 SCORE OF THE TEST PHASE LAST EPOCH: {r2_test * 100}%')
+
         
+        ### PREPARE THE DATA FOR THE PLOT ###  
+            
+        #Convert Pytorch tensor into list on CPU
+        data_test_target = data_y_test.cpu().tolist()
+        data_test_output = outputs_test.cpu().tolist()
+        
+        #Create the DataFrames
+        df_target = pd.DataFrame(data_test_target, columns=['Target'])
+        df_output = pd.DataFrame(data_test_output, columns=['Output'])
+                
+        #Take the values from the dataframes
+        target_test_bp = df_target.loc[:, 'Target'].values
+        output_test_bp = df_output.loc[:, 'Output'].values
+            
+        
+        ### BOX PLOT TO COMPARE TARGET AND OUTPUT TEST SET ###
+        plot_box([target_test_bp, output_test_bp],['Target', 'Output'],'Boxplot target and output test set pdf','y data','Pdf values',f'{results_path}/Evaluation/boxplot_test_pdy.png') 
         ### PLOT PDY TEST SET ###
-        Net_training.plot_pdfy(data_y_test,outputs_test,f'{results_path}/Evaluation/test_pdy.png')
+        plot_pdf(data_y_test, outputs_test, 'Target test set', 'Output test set', 'Comparison target and output test set', f'{results_path}/Evaluation/test_pdy.png')
 
+    '''
+                    #################################################################
 
+                                #### GENERATE NEW SAMPLES BY GMM ####
 
-        #################################################################
+                    #################################################################
+    '''
+    
+    if args.config == 'generating':
 
-                    #### GENERATE NEW SAMPLES BY GMM ####
+        ### DIRECTORY FOR EvALUATION PART ###
+        createDirectory(f'{results_path}/GMM')
 
-        #################################################################
-
-                                ###############################
-                                    ### GMM PARAMETERS ###
-                                ###############################
-        #These are parameters necessary to define the probability that a specific Gaussiam could be selected for 
-        #generating. the means and std  lists characterizes every single Gaussian of the mixture
-
-        #MIXING PARAMETERs
-        #Definition of Gaussian mixing parameter
-        mixing_parameters = np.random.rand(num_gaussians)
-        #The sum of the mixing parameter must be 1, so we normalize them
-        mixing_parameters /= np.sum(mixing_parameters)
-
-        #MEANs
-        means = np.random.uniform(-0.39, -0.36, num_gaussians)
+        ### LOAD THE TEST SET ###
+        data_X_train = torch.tensor(pd.read_csv(f'{split_path}/X_train.csv').to_numpy()).to(my_device)
+        data_X_val = torch.tensor(pd.read_csv(f'{split_path}/X_val.csv').to_numpy()).to(my_device)
+        data_X_test = torch.tensor(pd.read_csv(f'{split_path}/X_test.csv').to_numpy()).to(my_device)
+        data_y_train = torch.tensor(pd.read_csv(f'{split_path}/y_train.csv').to_numpy()).to(my_device)
+        data_y_val = torch.tensor(pd.read_csv(f'{split_path}/y_val.csv').to_numpy()).to(my_device)
+        data_y_test = torch.tensor(pd.read_csv(f'{split_path}/y_test.csv').to_numpy()).to(my_device)
+   
+        ### LOAD THE PRETRAINED NET ### 
+        net = MLP(input_size_mlp, output_size_mlp, hidden_layers_mlp).to(my_device)
+        net.load_state_dict(torch.load(path_pth_net))
         
-        #STDs
+
+                                        ###############################
+                                            ### GMM PARAMETERS ###
+                                        ###############################
+        #These are the parameters necessary to define the probability that a specific Gaussian could be selected from the mixture
+        #for generating a sample. The means and standard deviation (std) lists characterize every single Gaussian of the mixture.
+        
+
+        ### MIXING PARAMETERs ###
+        # Definition of Gaussian mixing parameters that sum up to 1
+        mixing_parameters = np.random.rand(num_gaussians)
+        mixing_parameters /= np.sum(mixing_parameters)
+        
+        ### MEANs and STDs ###
+        #Randomly generates parameters (means and standard deviations) for the Gaussian mixture model with a specified number of gaussians.
+        #These range are defined observing the mean and std of the real input data.
+        means = np.random.uniform(-0.39, -0.36, num_gaussians)
         std_deviations = np.random.uniform(0.12, 0.18, num_gaussians)
         
         #SAVE PARAMETERS ON TEXT FILE
         #Combine the parameters into an array 2D, a row for each gaussian of the GMM
         parameters = np.column_stack((np.arange(num_gaussians), mixing_parameters, means, std_deviations))
-        # Scrive i parametri nel file .txt
-        np.savetxt(f'{results_path}/Evaluation/saved_GMM_parameters.txt', parameters, header="Gaussian_Index Mixing_Parameter Mean Standard_Deviation", fmt='%d %.6f %.6f %.6f')                  
+        #Write the parameters in txt file
+        np.savetxt(f'{results_path}/GMM/saved_GMM_parameters.txt', parameters, header="Gaussian_Index Mixing_Parameter Mean Standard_Deviation", fmt='%d %.6f %.6f %.6f')                  
 
         
-                            ######################################
-                                ### GMM GENERATION SAMPLES ###
-                            ######################################
-        
-        #Generate artificial input:
-        new_samples = generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples)
+                                    ######################################
+                                        ### GMM GENERATION SAMPLES ###
+                                    ######################################
+                
+        ### GENERATE ARTIFICIAL INPUT ###
+        new_samples = generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples, torch.min(data_X_train), torch.max(data_X_train))
         
         #Print
         if args.print_info == '1':
-            print(f'Artificial Sample Max e Min: {torch.min(new_samples)} e {torch.max(new_samples)}')
-            print(f'Sample Max e Min: {min_train} e {max_train}')
-            print('Shape of the new sample tensor: ',new_samples.shape)
-            sleep(10)
-        
-        #Converto in float
-        new_samples = new_samples.to(torch.float)
-        
+            #Artificial samples
+            print('\n\nBelow there are some characteristics of the new artificial input distributed as the real 1D input:')
+            print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT ARTIFICIAL SAMPLES: {torch.mean(new_samples)} / {torch.median(new_samples)} / {torch.std(new_samples)} / {torch.min(new_samples)} / {torch.max(new_samples)}')
+            print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT TRAIN: {torch.mean(data_X_train)} / {torch.median(data_X_train)} / {torch.std(data_X_train)} / {torch.min(data_X_train)} / {torch.max(data_X_train)}')
+            print('\t- Shape of the new sample tensor: ',new_samples.shape)
+            sleep(8)
+                
 
-                        ################################################
-                            ### CHECK ARTIFICIAL SAMPLES OUTPUTS ###
-                        ################################################
-        #Calculate Ouputs of the artificial sample
-        outputs_artificial = Net_training.predict(net, new_samples)
+                                    
+                                    ################################################
+                                        ### CHECK ARTIFICIAL SAMPLES OUTPUTS ###
+                                    ################################################
         
-
+        ### PREDICTION OF ARTIFICIAL SAMPLES ### 
+        outputs_artificial = Net_training.predict(net, new_samples.to(torch.float))
         
-                        ################################################
-                                    ### CREATE BOXPLOT ###
-                        ################################################
+        #Print
         if args.print_info == '1':
-            print('Mediana Test data: ', torch.median(concatenated_tensor_output_boxp))
-            print('Mediana Artificial data: ', torch.median(outputs_artificial))
+            #Artificial samples output
+            print('\n\nBelow there are some characteristics of the artificial output:')
+            print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT ARTIFICIAL SAMPLES: {torch.mean(outputs_artificial)} / {torch.median(outputs_artificial)} / {torch.std(outputs_artificial)} / {torch.min(outputs_artificial)} / {torch.max(outputs_artificial)}')
+            print(f'\t- MEAN-MEDIAN-STD-MIN-MAX INPUT TRAIN: {torch.mean(data_y_train)} / {torch.median(data_y_train)} / {torch.std(data_y_train)} / {torch.min(data_y_train)} / {torch.max(data_y_train)}')
+            print('\t- Shape of the new sample tensor: ',new_samples.shape)
+            print('\t- Shape of the output of new sample tensor: ',outputs_artificial.shape)
+            sleep(8)
         
-        # Converti i tensori PyTorch in liste
+        
+                              
+                                    ################################################
+                                                ### CREATE BOXPLOT ###
+                                    ################################################
+        
+        ### PREDICTIONS ###
+        outputs_test = Net_training.predict(net,data_X_test.float())
+        outputs_train = Net_training.predict(net,data_X_train.float())
+        outputs_val = Net_training.predict(net,data_X_val.float())
+
+        ### PREPARE THE DATA FOR THE PLOT ###
+        #Concatenation for the sets of the real data
+        concatenated_tensor_output_boxp = torch.cat((outputs_test, outputs_train, outputs_val), dim=0)
+        concatenated_tensor_input_boxp = torch.cat((data_X_train, data_X_val, data_X_test), dim=0)
+        
+        #Convert Pytorch tensor into list on CPU
         data_real = concatenated_tensor_output_boxp.cpu().tolist()
         data_real_input = concatenated_tensor_input_boxp.cpu().tolist()
         data_artificial = outputs_artificial.cpu().tolist()
         data_artificial_input = new_samples.cpu().tolist()
 
-        # Crea un DataFrame di pandas con colonne nominate
+        #Create the DataFrames
         df_real = pd.DataFrame(data_real, columns=['Real'])
         df_real_input = pd.DataFrame(data_real_input, columns=['Real'])
         df_artificial = pd.DataFrame(data_artificial, columns=['Artificial'])
         df_artificial_input = pd.DataFrame(data_artificial_input, columns=['Artificial'])
         
-        #selection
+        #Take the values from the dataframes
         real = df_real.loc[:, 'Real'].values
         real_input = df_real_input.loc[:, 'Real'].values
         artific = df_artificial.loc[:, 'Artificial'].values
         artific_input = df_artificial_input.loc[:, 'Artificial'].values
 
-        # Creazione del plot box
-        plt.figure(figsize=(8, 6))
-        plt.boxplot([real_input, artific_input, real, artific], labels=['Real inp', 'Artificial inp','Real out', 'Artificial out'],meanline=True)
-        plt.title('Box Plot di due set di dati')
-        plt.xlabel('Set di dati')
-        plt.ylabel('Valore')
-        plt.grid(True)
-        plt.savefig(f'{results_path}/Evaluation/box_plot_output_inp.png')
-        plt.show()
-
-
-                        ################################################
-                                    ### CREATE PDF PLOTS ###
-                        ################################################
-        Net_training.plot_pdfy(concatenated_tensor_input_boxp, new_samples, f'{results_path}/Evaluation/pdx_artificial_real.png')
-        Net_training.plot_pdfy(concatenated_tensor_output_boxp, outputs_artificial, f'{results_path}/Evaluation/pdy_artificial_real.png')
-
-
-                        #######################################################
-                                    ### CREATE BOXPLOT WITHOUT OUTLIERS ###
-                        #######################################################
-
-        #Calcolo mean and std
-        mean_value_art = torch.mean(outputs_artificial)
-        std_value_art = torch.std(outputs_artificial)
+        ### BOX PLOT ###
+        ### BOX PLOT TO COMPARE REAL AND ARTIFICIAL INPUT ###
+        plot_box([real_input, artific_input],['Real input', 'Artificial input'],'Boxplot real and artificial input pdf','X data','Pdf values',f'{results_path}/GMM/real_artific_input.png') 
+        ### BOX PLOT TO COMPARE REAL AND ARTIFICIAL OUTPUT ###
+        plot_box([real, artific],['Real output', 'Artificial output'],'Boxplot real and artificial output pdf','y data','Pdf values',f'{results_path}/GMM/real_artific_output.png') 
         
-        ################## RIMOZIONE OULIERS IN INPUT #############
-        # Calcola il primo quartile (Q1) e il terzo quartile (Q3)
-        Q1 = np.percentile(df_artificial_input.loc[:, 'Artificial'].values, 25)
-        Q3 = np.percentile(df_artificial_input.loc[:, 'Artificial'].values, 75)
+                        
+                                    ################################################
+                                                ### CREATE PDF PLOTS ###
+                                    ################################################
+        ### PDF PLOT TO COMPARE REAL AND ARTIFICIAL INPUT ###
+        plot_pdf(concatenated_tensor_input_boxp, new_samples, 'Real input', 'Artificial input', 'Comparison real and artificial input', f'{results_path}/GMM/pdx_artificial_real.png')
+        ### PDF PLOT TO COMPARE REAL AND ARTIFICIAL OUTPUT ###
+        plot_pdf(concatenated_tensor_output_boxp, outputs_artificial, 'Real output', 'Artificial output', 'Comparison real and artificial output', f'{results_path}/GMM/pdy_artificial_real.png')
 
-        # Calcola l'IQR
+                                    
+                                    
+                                    #######################################################
+                                                ### CREATE BOXPLOT WITHOUT OUTLIERS ###
+                                    #######################################################
+        
+        ### RIMOZIONE OULIERS IN INPUT ###
+        #Calculate the first quartile (Q1) and the third quartile (Q3)
+        Q1 = np.percentile(df_artificial_input.loc[:, 'Artificial'].values, 25) #25% but we can choose 10% for example
+        Q3 = np.percentile(df_artificial_input.loc[:, 'Artificial'].values, 75) #75% but we can choose 90% for example
+
+        #Calculate IQR
         IQR = Q3 - Q1
 
-        # Definisci gli intervalli per gli outlier
+        #Define bounds to find the outliers
         lower_bound = Q1 - 1.5 * IQR
         upper_bound = Q3 + 1.5 * IQR
 
         #Print
         if args.print_info == '1':
-            print("Lower Bound:", lower_bound)
-            print("Upper Bound:", upper_bound)
-            print("Min value:", df_artificial_input.loc[:, 'Artificial'].values.min())
-            print("Max value:", df_artificial_input.loc[:, 'Artificial'].values.max())
+            #Compare bounds wrt min-max values
+            print("\n\nLower Bound: ", lower_bound)
+            print("Upper Bound: ", upper_bound)
+            print("Min value: ", df_artificial_input.loc[:, 'Artificial'].values.min())
+            print("Max value: ", df_artificial_input.loc[:, 'Artificial'].values.max())
             
-        #Condition
+        #Condition to remove outliers
         condition = (df_artificial_input['Artificial'] >= lower_bound) & (df_artificial_input['Artificial'] <= upper_bound)
 
-        # Filtra gli outlier
+        #Remove outliers from the dataset
         filtered_ARTIFICIAL_input_data = df_artificial_input[condition]
         
-        #Rifaccio
+        #Take the values from the dataframes
         artific_input_fil = filtered_ARTIFICIAL_input_data.loc[:, 'Artificial'].values
 
-        #Put it into torch tensor
+        #Put it into torch tensor and reshape it in a correct dimensionality
         artific_input_fil_tens = torch.tensor(artific_input_fil).reshape(-1,1)
 
         #Obtain the prediction
         artific_output_fil = Net_training.predict(net, artific_input_fil_tens.float())
 
-        # Converti i tensori PyTorch in liste
+        ### PREPARE THE DATA FOR THE PLOT ###
+        #Convert Pytorch tensor into list on CPU
         data_art_fil = artific_output_fil.cpu().tolist()
-        # Crea un DataFrame di pandas con colonne nominate
+        #Create the DataFrames
         data_art_fil = pd.DataFrame(data_art_fil, columns=['Artificial'])
-        #selection
+        #Take the values from the dataframes
         data_art_fil_out = data_art_fil.loc[:, 'Artificial'].values
 
-        # Creazione del plot box
-        plt.figure(figsize=(8, 6))
-        plt.boxplot([real, data_art_fil_out, artific], labels=['Real out', 'Artificial\n filtered out', 'Artificial\n not filtered out'],meanline=True)
-        plt.title('Box Plot di due set di dati')
-        plt.xlabel('Set di dati')
-        plt.ylabel('Valore')
-        plt.grid(True)
-        plt.savefig(f'{results_path}/Evaluation/box_plot_output_inp_fil1.png')
-        plt.show()
-
-        # Creazione del plot box
-        plt.figure(figsize=(8, 6))
-        plt.boxplot([real_input ,artific_input_fil, artific_input], labels=['Real inp','Artificial\n filtered inp', 'Artificial\n not filtered inp'],meanline=True)
-        plt.title('Box Plot di due set di dati')
-        plt.xlabel('Set di dati')
-        plt.ylabel('Valore')
-        plt.grid(True)
-        plt.savefig(f'{results_path}/Evaluation/box_plot_output_inp_fil2.png')
-        plt.show()
+        ### BOX PLOT ###
+        ### BOX PLOT TO COMPARE REAL AND FILTERED/NOT FILTERED ARTIFICIAL INPUT ###
+        plot_box([real_input ,artific_input_fil, artific_input],['Real input','Artificial\n filtered input', 'Artificial\n not filtered input'],'Boxplot real and filtered/not filtered artificial input pdf','X data','Pdf values',f'{results_path}/GMM/real_f_nf_artific_input.png') 
+        ### BOX PLOT TO COMPARE REAL AND FILTERED/NOT FILTERED ARTIFICIAL OUTPUT ###
+        plot_box([real, data_art_fil_out, artific],['Real output', 'Artificial\n filtered output', 'Artificial\n not filtered output'],'Boxplot real and filtered/not filtered artificial output pdf','y data','Pdf values',f'{results_path}/GMM/real_f_nf_artific_output.png') 
 
         #Saves
-        #Write a .txt file to the specified path and writes information regarding the epoch and the loss to which
-        #the best trained net belongs
-        with open('D:/Results/NET/artificial_info.txt', "w") as f:
-            print(f"Info net:\n\n\tMEAN VALIDATION:\t{mean_value_art}\n\n\tSTD VALIDATION:\t{std_value_art}", file=f)
+        #Write a .txt file to the specified path and writes information
+        with open(f'{results_path}/GMM/artificial_info.txt', "w") as f:
+            print(f"Info artificial samples:\n\n\tMEAN:\t{torch.mean(new_samples)}\n\n\tSTD:\t{torch.std(new_samples)}\n\n\tMEDIAN:\t{torch.median(new_samples)}\n\n\tMIN:\t{torch.min(new_samples)}\n\n\tMAX:\t{torch.max(new_samples)}\
+                \nInfo artificial outputs:\n\n\tMEAN:\t{torch.mean(outputs_artificial)}\n\n\tSTD:\t{torch.std(outputs_artificial)}\n\n\tMEDIAN:\t{torch.median(outputs_artificial)}\n\n\tMIN:\t{torch.min(outputs_artificial)}\n\n\tMAX:\t{torch.max(outputs_artificial)}\
+                \nInfo artificial filtered samples:\n\n\tMEAN:\t{torch.mean(artific_input_fil_tens)}\n\n\tSTD:\t{torch.std(artific_input_fil_tens)}\n\n\tMEDIAN:\t{torch.median(artific_input_fil_tens)}\n\n\tMIN:\t{torch.min(artific_input_fil_tens)}\n\n\tMAX:\t{torch.max(artific_input_fil_tens)}\
+                \nInfo artificial filtered outputs:\n\n\tMEAN:\t{torch.mean(artific_output_fil)}\n\n\tSTD:\t{torch.std(artific_output_fil)}\n\n\tMEDIAN:\t{torch.median(artific_output_fil)}\n\n\tMIN:\t{torch.min(artific_output_fil)}\n\n\tMAX:\t{torch.max(artific_output_fil)}", file=f)
             
-        #Stampo la PDFY artificiale
-        #Net_training.plot_pdfy_prova(outputs_artificial, 'D:/Results/NET/ARTIFICIAL_pfdy.png')
+       

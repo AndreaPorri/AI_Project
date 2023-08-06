@@ -1,7 +1,67 @@
-import matplotlib.pyplot as plt
-import seaborn as sns
-import pandas as pd
-import numpy as np
+
+'''                        
+                        ############################################################
+
+                                            MLP AND TRAINING
+
+                        ############################################################
+
+Introduction:
+The provided code offers a flexible implementation of a Multi-Layer Perceptron (MLP) along with functionalities 
+for training and making predictions in regression tasks. This code allow easy modifications to the network's structure
+simpy provide a differente list of hidden layers dimensions.
+
+The MLP architecture consists of the following layers:
+    - Input layer: 1 neuron (corresponding to the input size).
+    - Hidden layer: 4 neurons, using the Parametric ReLU activation function and dropout regularization.
+    - Hidden layer: 2 neurons, using the Parametric ReLU activation function and dropout regularization.
+    - Output layer: 1 neuron, using the sigmoid activation function (corresponding to the output size).
+
+Note: Additional hidden layers can be added or existing layers can be removed or modified by adjusting the 'hidden_sizes' parameter.
+Note: Input layer e Output layer can be changed, but you have to check the dimensions of the input-target tensors.
+
+
+Classes and Functionalities:
+
+1. Class MLP()
+The 'MLP' class defines the architecture of the Multi-Layer Perceptron, which is used for regression problems.
+This class allows users to customize the network's architecture by specifying the input and output layer shapes,
+as well as the desired sizes of hidden layers using the 'hidden_sizes' parameter. The activation function and 
+dropout regularization are adjustable for each hidden layer, offering considerable flexibility in model design.
+    
+    Key Methods:
+    a. initialize_weights(): This method intelligently initializes the network's parameters (weights and biases)
+       with normalized random values, ensuring a proper starting point for training.
+    b. forward(input_tensor): The 'forward' method performs the forward pass through the MLP, calculating the output
+       of the network for a given input float tensor. This is the key function used during inference and prediction,
+       but also have a key role during the training and validation part.
+
+2. Class Net_training()
+The 'Net_training' class is dedicated to handling the training, validation and inference of the neural network designed
+for regression tasks. It takes an instance of the 'MLP' class as input and provides necessary functionality for model training.
+   
+   Key Methods:
+    a. predict(net, input_tensor): This method makes predictions using the given neural network. It takes an input tensor
+       and returns the network output. Users can use this function to obtain predictions for new data points after the model is trained.
+
+    b. validate(net, dataloader_val, criterion): The 'validate' method evaluates the neural network's performance on a
+       validation dataset. It calculates the average validation loss and provides a list of output tensors, which can be
+       valuable for performance analysis. Additionally, it calculates the R2 score, offering insights into the model's 
+       goodness of fit.
+
+    c. training(net, X_train, X_val, y_train, y_val, ... ): The 'training' method trains the neural network for 
+       multiple epochs. During training, it updates the network's parameters based on the provided training data 
+       using an optimizer and loss function. Furthermore, it generates plots of the probability density functions 
+       (PDFs) of the outputs/target, along with a plot of the losses during training.
+
+Note:
+To ensure efficient prediction and validation phases and avoid unnecessary gradient computation, it is recommended 
+to use torch.no_grad() when executing these operations. Moreover, for effective configuration of the training process,
+users can supply a YAML file containing relevant details such as loss function choices, optimizer options, and other 
+training hyperparameters.
+'''
+
+#Import needed libraries, classes and functions
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -17,16 +77,17 @@ from time import sleep
                                         ### MLP ARCHITECTURE CLASS ###
 
                                 ##############################################
-class MLP(nn.Module):
+class MLP(nn.Module): 
     """
-    Creates the main MLP for regression.
+    Creates the architecture of the MLP used in a regression problem. It also defines a method for the correct 
+    initialization of the network's parameters and the forward method.
 
     Args:
         input_size [int] : input layer shape
         output_size [int] : desired output layer shape
         hidden_sizes [list]: desired hidden layers shapes
     Returns:
-        The class to define structure of the MLP.
+        The class to define structure of the MLP and useful methods.
     """
     def __init__(self, input_size, output_size, hidden_sizes): #Architecture definition
         super(MLP, self).__init__()
@@ -78,7 +139,7 @@ class Net_training(torch.nn.Module):
     def __init__(self):
         super(Net_training, self).__init__()
 
-    def predict(net, input_tensor):
+    def predict(net, input_tensor): #Calculate the output
         '''
         Make predictions using the neural network.
 
@@ -89,19 +150,19 @@ class Net_training(torch.nn.Module):
         Returns:
             Network output.
         '''
-        # Retrieve the device where the parameters are
+        #Retrieve the device where the parameters are
         device = next(net.parameters()).device  # we assume that all the network parameters are on the same device
         
         with torch.no_grad():
             net.eval()
-            # Move the input data to the device
+            #Move the input data to the device
             X = input_tensor.to(device)
-            # Compute the output of the network
+            #Compute the output of the network
             output = net(X)
 
         return output
 
-    def validate(net, dataloader_val, criterion):
+    def validate(net, dataloader_val, criterion): #Validate the network
         '''
         Validate the neural network.
 
@@ -113,7 +174,7 @@ class Net_training(torch.nn.Module):
         Returns:
             Average validation loss.
         '''
-        #Initialize device and avarage loss
+        #Initialize device, avarage loss, outputs and targets lists
         device = next(net.parameters()).device
         val_loss = 0.0
         outputs = []
@@ -151,16 +212,12 @@ class Net_training(torch.nn.Module):
         #Calculate the average validation loss
         avg_val_loss = val_loss / len(dataloader_val)
         
-        #Combine the tensors in the list output_val and targets into a single tensor along the samples dimension
-        output_val_tensor = torch.cat(outputs, dim=0)
-        targets_tensor = torch.cat(targets, dim=0)
-
-        #Convert tensors to numpy arrays for calculating the R2 score
-        targets_tensor_np = targets_tensor.cpu().numpy()
-        output_val_np = output_val_tensor.cpu().numpy()
+        #Combine the tensors in the list output_val and targets into a single tensor along the samples dimension and convert tensors to numpy arrays for calculating the R2 score
+        output_val_np = torch.cat(outputs, dim=0).cpu().numpy()
+        targets_np = torch.cat(targets, dim=0).cpu().numpy()
 
         #Calculate the R2 score
-        r2 = r2_score(targets_tensor_np, output_val_np)
+        r2 = r2_score(targets_np, output_val_np)
 
         return avg_val_loss, outputs, r2
     
@@ -189,53 +246,48 @@ class Net_training(torch.nn.Module):
             The two arrays with the R2s on training and validation data computed during the training epochs.
         """
 
-        print("Training the network...")
+        print("\n\nTraining the network...")
         sleep(2)
         print('\n\nLoading the dataset and creating the dataloader...\n\n\n')
-
-        #Print
-        if print_info == '1':
-            #Some information about our data
-            print("Validation and training dataset shape")
-            print("\tX_train shape:", X_train.shape)
-            print("\ty_train shape:", y_train.shape)
-            print("\tX_val shape:", X_val.shape)
-            print("\ty_val shape:", y_val.shape)
-            print("\n\n\n")
-            sleep(6)
 
         #Reshape the target in a correct way
         y_train = y_train.reshape(-1,1)
         y_val = y_val.reshape(-1,1)
         
+        #Print
+        if print_info == '1':
+            #Some information about our data
+            print("Validation and training dataset shape_")
+            print("\t- X_train shape:", X_train.shape)
+            print("\t- y_train shape:", y_train.shape)
+            print("\t- X_val shape:", X_val.shape)
+            print("\t- y_val shape:", y_val.shape)
+            print("\n\n\n")
+            sleep(6)
+  
+        ### DATASET ###
         #Combine input and output tensors
         train_dataset = TensorDataset(torch.Tensor(X_train), torch.Tensor(y_train))
         val_dataset = TensorDataset(torch.Tensor(X_val), torch.Tensor(y_val))
 
-        #Dataloader
+        ### DATALOADER ###
         dataloader_train = DataLoader(train_dataset, batch_size=minibatch_size, shuffle=False, drop_last=True)
         dataloader_val = DataLoader(val_dataset, batch_size=minibatch_size, shuffle=False, drop_last=True)
 
-        #We assume that all the network parameters are on the same device
+        ### DEVICE ###
         device = next(net.parameters()).device
 
-        #Print to verify that everything has been executed correctly, that the objects have been instantiated and the device is defined:
+        #Print
         if print_info == '1':
-            print("Device, datasets and dataloader:\n")
-            print(f'\tThe device selected for the training is: {device}')
-            print(f'\tTraining dataset object = {train_dataset}')
-            print(f'\tTraining dataloader object = {dataloader_train}')
-            print(f'\tValidation dataset object = {val_dataset}')
-            print(f'\tValidation dataloader object = {dataloader_val}')
-            print(f'\tNumber of datasets training and validation samples = {len(train_dataset),len(val_dataset)}')
-            
-            print(f'\n\n INPUT OUTPUT SHAPE:  {X_train.shape} e {y_train.shape}')
-            print(f'\n INPUT OUTPUT MIN MAX:  {torch.min(X_train)} - {torch.max(X_train)} e {torch.min(y_train)} - {torch.max(y_train)}')
-            
-            sleep(20)
+            print("\n\nDevice, datasets and dataloader:\n")
+            print(f'\t- The device selected for the training is: {device}')
+            print(f'\t- Training dataset object = {train_dataset}')
+            print(f'\t- Training dataloader object = {dataloader_train}')
+            print(f'\t- Validation dataset object = {val_dataset}')
+            print(f'\t- Validation dataloader object = {dataloader_val}')          
+            sleep(8)
 
-        
-        #LOSS FUNCTION SELECTION
+        ### LOSS FUNCTION SELECTION ###
         print('\n\nLoading the selected loss function...')
 
         #Function for multi-selection loss function
@@ -249,7 +301,7 @@ class Net_training(torch.nn.Module):
         sleep(2)
 
         
-        #OPTIMIZER SELECTION AND APPLICATION
+        ### OPTIMIZER SELECTION ###
         print('\n\nLoading the selected optimizer...')
 
         #Setup Adam or SGD optimizers for both the generator and the discriminator
@@ -274,7 +326,7 @@ class Net_training(torch.nn.Module):
             print(f'\t\t- Loss function selected: {loss_function_choice}')
             print(f'\t\t- Optimizer: {optimizer_choice}')
 
-            sleep(6)
+            sleep(8)
 
         
         #############################################################################
@@ -288,13 +340,9 @@ class Net_training(torch.nn.Module):
         #Telling the network we are going to train it (and not to simply evaluate it)
         net.train()
 
-        #Create the directory for theAutoencoder results
-        createDirectory(results_path)
-        createDirectory(f'{results_path}/NET')
-
         #Define some useful quantities
-        net_train_losses = [] #list of each loss of the epoch
-        net_val_losses = [] #list of the loss of the epochs
+        net_train_losses = [] #list of each loss of the epoch of training part
+        net_val_losses = [] #list of the loss of the epochs of validation part
 
         
         ######### LOOP ON EPOCHS ##########
@@ -303,6 +351,8 @@ class Net_training(torch.nn.Module):
             loss_value_train = 0.
             #Initialize the sum of the R2 scores during training epoch
             net_train_r2 = 0.
+            #Outputs
+            outputs_train = []
             ### LOOP ON MINI-BATCHES ###
             for nb, (X_minibatch, y_minibatch) in enumerate(dataloader_train):  #loop on mini-batches
                 #Clearing the previously computed gradients (are saved in memory, each iteration we need to reset the gradients)
@@ -317,6 +367,9 @@ class Net_training(torch.nn.Module):
                 #Calculate the outputs
                 output = net(X_minibatch) #going forward, "net" is a callable object
                
+                #Save the last epoch training outputs
+                outputs_train.append(output)
+
                 #Calculate the loss on batches and save it:
                 loss_value_on_minibatch = loss_function(output, y_minibatch)
                             
@@ -344,7 +397,7 @@ class Net_training(torch.nn.Module):
                     net_train_r2 += r2_mb
 
                     #Print of the minibatch
-                    print("\tepoch:{}, minibatch: {}, loss_train: {:.4f} r2score: {}%".format(e + 1, nb, loss_value_on_minibatch, r2_mb*100))
+                    print("\tepoch:{}, minibatch: {}, loss_train: {:.4f}, r2score: {}%".format(e + 1, nb, loss_value_on_minibatch, r2_mb*100))
                     
                     
             #R2score last epoch train and validation
@@ -364,55 +417,57 @@ class Net_training(torch.nn.Module):
             net_val_losses.append(loss_valid)
 
         #Combine the tensors in the list output_val into a single tensor along the samples dimension
-        output_val_tensor = torch.cat(output_val, dim=0)
-                
-        ### MEAN AND STD OF THE OUTPUT ###
-        #Calculate the VALIDATION mean of the output data
-        mean_value = torch.mean(output_val_tensor)
+        output_val_tensor = torch.cat(output_val, dim=0).reshape(-1,1)
+        outputs_train_tensor = torch.cat(outputs_train, dim=0).reshape(-1,1)
 
-        # Calculate the VALIDATION standard deviation of the output data
+
+        ### MEAN AND STD OF THE OUTPUT ###
+        #Calculate the VALIDATION mean and std of the output data
+        mean_value = torch.mean(output_val_tensor)
         std_value = torch.std(output_val_tensor)
+        
         ### R2 SCORE PRINT ###
         print(f'\n\n\n R2 SCORE OF THE TRAINING PHASE LAST EPOCH: {net_train_r2 * 100}%')
-        #### SAVING TRAINED NET ####
-        save_net(net,n_epochs, loss_value_train, loss_valid, mean_value, std_value, net_val_r2, path_pth, path_txt)
+        
+        ### SAVING TRAINED NET ###
+        save_net(net,n_epochs, loss_value_train, loss_valid, path_pth, path_txt, mean_value=mean_value, std_value=std_value, r2 = net_val_r2)
 
-        #### PLOT OF TRAINING AND VALIDATION LOSSES AND PDF ####
+        ### PLOT OF TRAINING AND VALIDATION LOSSES ###
         plot_loss(n_epochs, net_train_losses, net_val_losses, result_path_net)
-        Net_training.plot_pdfy(y_val,output_val_tensor, f'{results_path}/NET/val_pdy.png')
+        
+        ### PREPARE THE DATA FOR PLOT BOX ###
+        #Convert Pytorch tensor into list on CPU
+        data_train = y_train.cpu().tolist()
+        data_train_output = outputs_train_tensor.cpu().tolist()
+        data_val = y_val.cpu().tolist()
+        data_val_output = output_val_tensor.cpu().tolist()
+
+        #Create the DataFrames
+        df_train = pd.DataFrame(data_train, columns=['Target'])
+        df_train_output = pd.DataFrame(data_train_output, columns=['Output'])
+        df_val = pd.DataFrame(data_val, columns=['Target'])
+        df_val_output = pd.DataFrame(data_val_output, columns=['Output'])
+        
+        #Take the values from the dataframes
+        target_t = df_train.loc[:, 'Target'].values
+        output_t = df_train_output.loc[:, 'Output'].values
+        target_v = df_val.loc[:, 'Target'].values
+        output_v = df_val_output.loc[:, 'Output'].values
+        
+        ### PLOT BOX ###
+        ### BOX PLOT TO COMPARE TARGET AND OUTPUT TRAINING SET ###
+        plot_box([target_t, output_t],['Target', 'Output'],'Boxplot target and output training set pdf','y data','Pdf values',f'{results_path}/NET/boxplot_training_pdy.png') 
+        ### BOX PLOT TO COMPARE TARGET AND OUTPUT VALIDATION SET ###
+        plot_box([target_v, output_v],['Target', 'Output'],'Boxplot target and output validation set pdf','y data','Pdf values',f'{results_path}/NET/boxplot_validation_pdy.png') 
+        
+        ### PLOT PDY ###
+        ### PLOT PDY TEST SET ###
+        plot_pdf(y_train, outputs_train_tensor, 'Target training set', 'Output training set', 'Comparison target and output training set', f'{results_path}/NET/training_pdy.png')
+        ### PLOT PDY TEST SET ###
+        plot_pdf(y_val, output_val_tensor, 'Target validation set', 'Output validation set', 'Comparison target and output validation set', f'{results_path}/NET/training_pdy.png')
+
         
         return net_train_losses,net_val_losses
-    
-    def plot_pdfy(target_data_val, output_data_val,path):
-        # Move the output_data tensor from GPU to CPU
-        output_data_train_np = target_data_val.detach().cpu().numpy()
-        output_data_val_np = output_data_val.detach().cpu().numpy()
-        
-        # Calcola l'istogramma per stimare la PDF
-        hist_target, bins_target = np.histogram(output_data_train_np, bins='auto', range=(output_data_train_np.min(), output_data_train_np.max()))
-        hist_val, bins_val = np.histogram(output_data_val_np, bins='auto', range=(output_data_val_np.min(), output_data_val_np.max()))
-
-        # Step 3: Normalizza gli istogrammi per ottenere le rispettive PDF
-        pdf_target = hist_target / hist_target.sum()
-        pdf_val = hist_val / hist_val.sum()
-
-        # Calcola i punti medi tra i bin per ottenere le curve delle PDF
-        bin_centers_target = (bins_target[1:] + bins_target[:-1]) / 2
-        bin_centers_val = (bins_val[1:] + bins_val[:-1]) / 2
-
-         # Step 4: Plotta le due curve PDF con colori diversi
-        plt.plot(bin_centers_target, pdf_target, color='b', label='Target')
-        plt.plot(bin_centers_val, pdf_val, color='r', label='MLP output')
-        plt.xlabel('Values')
-        plt.ylabel('Probability Density')
-        plt.title('PDF of the target and input')
-        plt.grid(True)
-        plt.legend()
-        #Save
-        plt.savefig(path)      
-        #Mostra il grafico
-        plt.show()
-
 
 
         

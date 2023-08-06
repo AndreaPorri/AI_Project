@@ -1,4 +1,10 @@
 '''
+                    ############################################################
+
+                                            FUNCTIONS
+
+                    ############################################################
+
 This file contains all the functions useful for carrying out certain tasks. They are put in the form of a function
 because these will appear more times in the code or simply to have a cleaner and more readable code.
 
@@ -17,15 +23,17 @@ import os
 from matplotlib import pyplot as plt
 import numpy as np
 from sklearn.decomposition import PCA
+
 '''
             ############################################################################
             #                           DATASET FUNCTIONS
             ############################################################################
 '''
 
-def dataset_reduction(dataframe, *args:str, num_col = 6): #Reduce dataset
+def dataset_reduction(dataframe, *args:str, num_col:int = 6): #Reduce dataset
     '''
     It reduces the dimensionality of the dataset to only take the columns we are interested.
+    
     Args:
         dataframe: entire dataset.
         args: all the column names we want to select.
@@ -77,6 +85,14 @@ def cleaning_dataset_function(dataframe): #Clean reduced dataset
     return dataframe
 
 def PCA_fun(X): #Dimensional reduction Principal Component Analysis
+    '''
+    Given a multidimensional tensor returns a one-dimensional tensor.
+
+    Args:
+        X: input tensor.
+    Returns:
+        The monodimensional tensor.
+    '''
     #Use PCA to reduce dimensionality to 1 dimension
     pca = PCA(n_components=1)
     X_pca_numpy = pca.fit_transform(X)
@@ -90,7 +106,7 @@ def PCA_fun(X): #Dimensional reduction Principal Component Analysis
             #                           GENERIC FUNCTIONS
             ############################################################################
 '''            
-def create_file_csv(dataframe, filename): #Create CSV file
+def create_file_csv(dataframe, filename:str): #Create CSV file
     '''
     Provides dataframe and a path to save this dataframe to a csv file.
 
@@ -103,16 +119,19 @@ def create_file_csv(dataframe, filename): #Create CSV file
     #Save my dataframe to a new .csv file.
     dataframe.to_csv(filename, index=False)
 
-def createDirectory(nameDirectory: str): #Create new directory
+def createDirectory(nameDirectory:str): #Create new directory
     """
-    This function is used to create folders, taking as input the absolute path of the folder we want to create (path/foldername). In our case, the path is passed
-    through the yaml file. The folders that will be created are those for saving training results, and during the evaluation phase, the folder
-    where the images produced by the generator will be saved.
+    This function is used to create folders
+    
+    Args:
+        nameDirectory: absolute path of the folder which want to create (path/foldername).
+    Returns:
+        The directory will be created with the path specified.
     """
     if not os.path.exists(f'{nameDirectory}'):  #checks if the folder with that path already exists
         os.mkdir(f'{nameDirectory}')  #if it does not exist creates it
 
-def load_csv_file(filename): #Load CSV file in X tensor(used in autoencoder.py)
+def load_csv_file(filename:str): #Load CSV file in X tensor(used in autoencoder.py)
     '''
     Function that loads the dataset, by the filename, into a pytorch tensor and saves it into the variable X.
     
@@ -134,7 +153,7 @@ def load_csv_file(filename): #Load CSV file in X tensor(used in autoencoder.py)
             #                         NORMALIZATION FUNCTIONS
             ############################################################################
 '''
-def restrict_input_data(X, min_val=None, max_val=None): #Restrict input [-1,1]
+def restrict_input_data(X, min_val:float=None, max_val:float=None): #Restrict input [-1,1] (not used in our code, but a possible solution)
     '''
     Provides a method for restrict input pytorch tensors to a pytorch tensor of values between -1 and 1.
 
@@ -155,28 +174,7 @@ def restrict_input_data(X, min_val=None, max_val=None): #Restrict input [-1,1]
 
     return normalized_X
 
-def restrict_output_data(y, min_val=None, max_val=None): #Restrict output [0,1]
-    '''
-    Provides a method for restrict output pytorch tensors to a pytorch tensor of values between 0 and 1.
-
-    Args:
-        y: output tensor not normalize.
-        min_val: min value for normalization.
-        max_val: max value for normalization.
-    Returns:
-        Normalized output pytorch tensor.
-    '''
-    #Calculate of min and max tensor value
-    if min_val is None:
-        min_val = y.min()
-    if max_val is None:
-        max_val = y.max()
-    #Adjust the range to 0 to 1 --> Normalization
-    normalized_y = (y - min_val) / (max_val - min_val)
-    
-    return normalized_y
-
-def real_norm_input(X, mean=None, std=None): #Normalization input
+def real_norm_input(X, mean:float=None, std:float=None): #Normalization input
     '''
     Provides a method for normalizing input pytorch tensors to a pytorch tensor.
 
@@ -197,12 +195,33 @@ def real_norm_input(X, mean=None, std=None): #Normalization input
 
     return X_normalized, mean, std
 
+def restrict_output_data(y, min_val:float=None, max_val:float=None): #Restrict output [0,1]
+    '''
+    Provides a method for restrict output pytorch tensors to a pytorch tensor of values between 0 and 1.
+
+    Args:
+        y: output tensor not normalize.
+        min_val: min value for normalization.
+        max_val: max value for normalization.
+    Returns:
+        Restricred [0,1] output pytorch tensor.
+    '''
+    #Calculate of min and max tensor value
+    if min_val is None:
+        min_val = y.min()
+    if max_val is None:
+        max_val = y.max()
+    #Adjust the range to 0 to 1 --> Normalization
+    normalized_y = (y - min_val) / (max_val - min_val)
+    
+    return normalized_y
+
 '''
             ############################################################################
             #                             SPLIT FUNCTIONS
             ############################################################################
 '''
-def load_data_from_file(filename, num_col = 6):
+def load_data_from_file(filename:str, num_col:int = 6): #Divide dataset in input and target
     '''
     Provides a path and the number of columns of your dataset and split in input and output pytorch tensors.
 
@@ -222,7 +241,7 @@ def load_data_from_file(filename, num_col = 6):
 
     return X, y
 
-def create_autoencoder_splits_unbalanced(X, train_frac, valid_frac, randomize=True):
+def create_autoencoder_splits_unbalanced(X, train_frac:float, valid_frac:float, randomize:bool=True): #Create splits for autoencoder
     """
     Creates (randomized) training, validation, test data splits.
 
@@ -251,7 +270,7 @@ def create_autoencoder_splits_unbalanced(X, train_frac, valid_frac, randomize=Tr
 
     return X[:train_size], X[train_size:train_size+valid_size], X[train_size+valid_size:]
 
-def create_splits_unbalanced(X, y, train_frac, valid_frac, randomize=True, max_min_into_training = True):
+def create_splits_unbalanced(X, y, train_frac:float, valid_frac:float, randomize:bool=True, max_min_into_training:bool = True): #Create splits for Net
     """
     Creates (randomized) training, validation, test data splits. Esnure that the max and min value are putted
     into the training set.
@@ -324,59 +343,50 @@ def create_splits_unbalanced(X, y, train_frac, valid_frac, randomize=True, max_m
             ############################################################################
 '''
 
-def save_net(model, epoch, epoch_loss_train, epoch_loss_val, mean_value, std_value, r2, path_pth, path_txt):
+def save_net(model, epoch:int, epoch_loss_train:float, epoch_loss_val:float, path_pth:str, path_txt:str, r2:float=None, mean_value:float=None, std_value:float=None ,net:str='net'): #Save model for Net
     '''
-    Save the "model state" of the net to a .pth file in the specified path
+    Save the "model state" of the Net to a .pth file in the specified path and text file.    
     Args:
-        -
-        -
-        -
-        -
-        -
-        -
+        - model: the network.
+        - epoch: last epoch.
+        - epoch_loss_train: mean loss of the last epoch in training phase.
+        - epoch_loss_val: mean loss of the last epoch in validation phase.
+        - mean_value: mean of validation output.
+        - std_value: std of validation output.
+        - r2: score of the consistency of the model. (0 not ok, 1 perfect)
+        - path_pth: path where the code will save model parameters/characteristics.
+        - path_txt: path where the code will save various characteristics.
 
     Return:
         Two file with the model state and a text file with some info.
-    
     '''
     #Save the model
     torch.save(model.state_dict(), path_pth)
     #Write a .txt file to the specified path and writes information regarding the epoch and the loss to which
     #the best trained net belongs
     with open(path_txt, "w") as f:
-        print(f"Checkpoint net:\n\n\tEPOCH:\t{epoch}\n\n\tLOSS TRAIN:\t{epoch_loss_train}\n\n\tLOSS VALIDATION:\t{epoch_loss_val}\n\n\tMEAN VALIDATION:\t{mean_value}\n\n\tSTD VALIDATION:\t{std_value}\n\n\tR2 VALIDATION:\t{r2}", file=f)
+        print(f"Checkpoint {net}:\n\n\tEPOCH:\t{epoch}\n\n\tLOSS TRAIN:\t{epoch_loss_train}\n\n\tLOSS VALIDATION:\t{epoch_loss_val}\n\n\tMEAN VALIDATION:\t{mean_value}\n\n\tSTD VALIDATION:\t{std_value}\n\n\tR2 VALIDATION:\t{r2}", file=f)
 
-def save_net_aut(model, epoch, epoch_loss_train, epoch_loss_val, path_pth, path_txt):
+def plot_loss(n_epochs:int, net_train_losses:list, net_val_losses:list, result_path:str): #Plot of the train and validation losses
     '''
-    Save the "model state" of the net to a .pth file in the specified path
+    Save and show the plot of the losses of the training and validation against epochs.
+    
     Args:
-        -
-        -
-        -
-        -
-        -
-        -
+        - n_epochs: number of the epochs.
+        - net_train_losses: list of the losses of the training phase.
+        - net_val_losses: list of the losses of the validation phase.
+        - result_path: the path of the Results directory.
 
     Return:
-        Two file with the model state and a text file with some info.
-    
+        A PNG file with an image of the graph of the trend of losses against epochs.    
     '''
-    #Save the model
-    torch.save(model.state_dict(), path_pth)
-    #Write a .txt file to the specified path and writes information regarding the epoch and the loss to which
-    #the best trained net belongs
-    with open(path_txt, "w") as f:
-        print(f"Checkpoint net:\n\n\tEPOCH:\t{epoch}\n\n\tLOSS TRAIN:\t{epoch_loss_train}\n\n\tLOSS VALIDATION:\t{epoch_loss_val}", file=f)
-
-def plot_loss(n_epochs, net_train_losses, net_val_losses, result_path):
-
     #Plot of the losses for each epoch
     plt.figure(figsize=(10, 6))
-    plt.plot(range(1, n_epochs + 1), net_train_losses, label='Training Loss')
-    plt.plot(range(1, n_epochs + 1), net_val_losses, label='Validation Loss')
+    plt.plot(range(1, n_epochs + 1), net_train_losses, label='Training Losses')
+    plt.plot(range(1, n_epochs + 1), net_val_losses, label='Validation Losses')
     plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.title('Training and Validation Loss')
+    plt.ylabel('Losses')
+    plt.title('Training and Validation Losses')
     plt.legend()
     plt.grid(True)
     
@@ -386,5 +396,109 @@ def plot_loss(n_epochs, net_train_losses, net_val_losses, result_path):
     #Show the image
     plt.show()
 
+def plot_box(data_list:list, labels:list, title:str, x_label:str, y_label:str, save_path:str): #BoxPlot to compare pdf
+    '''
+    Save and show the plot of the pdf.
+    
+    Args:
+        - data_list: list of data which we want to plot its pdf.
+        - labels: list of the labels of each box.
+        - title: title of the figure.
+        - x_label: x axis label.
+        - y_label: y axis label.
+        - save_path: figure path.
 
+    Return:
+        A PNG file with an image of the box plot.    
+    '''
+    #Figure
+    plt.figure(figsize=(8, 6))
+    plt.boxplot(data_list, labels=labels, meanline=True)
+    plt.title(title)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.grid(True)
+    plt.savefig(save_path)
+    plt.show()
 
+def plot_pdf(target_data, output_data, label1:str, label2:str, title:str, path:str): #Plot to compare pdf
+    '''
+    Save and show the plot of the pdf.
+    
+    Args:
+        - target_data: data of the target or real data.
+        - output_data: data of the output or artificial data
+        - label1: target/real label.
+        - label2: output/artificial label.
+        - title: title of the figure.
+        - path: figure path.
+
+    Return:
+        A PNG file with an image of the pdf curves plot.    
+    '''
+    #Move the output_data tensor from GPU to CPU
+    target_data_np = target_data.detach().cpu().numpy()
+    output_data_np = output_data.detach().cpu().numpy()
+    
+    #Calculate histogram to estimate PDF
+    hist_target, bins_target = np.histogram(target_data_np, bins='auto', range=(target_data_np.min(), target_data_np.max()))
+    hist_out, bins_out = np.histogram(output_data_np, bins='auto', range=(output_data_np.min(), output_data_np.max()))
+
+    #Normalize the histograms to get the respective PDFs
+    pdf_target = hist_target / hist_target.sum()
+    pdf_out = hist_out / hist_out.sum()
+
+    #Calculate midpoints between bins to get PDF curves
+    bin_centers_target = (bins_target[1:] + bins_target[:-1]) / 2
+    bin_centers_out = (bins_out[1:] + bins_out[:-1]) / 2
+
+    #Plot the two PDF curves with different colors
+    plt.plot(bin_centers_target, pdf_target, color='b', label=label1)
+    plt.plot(bin_centers_out, pdf_out, color='r', label=label2)
+    plt.xlabel('Data values')
+    plt.ylabel('Pdf')
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    #Save
+    plt.savefig(path)      
+    #Show the figure
+    plt.show()
+
+def plot_initial_data_afterDR(x_values, y_values, title:str, path:str, reduce_number_data:str = '0', sample_interval:int=100): #Plot to visualize data after preprocessing
+    '''
+    Save and show the plot of the preprocessed data.
+    
+    Args:
+        - x_values: preprocessed input.
+        - y_values: preprocessed output.
+        - title: title of the figure.
+        - path: figure path.
+        - reduce_number_data: if it is 1, we plot not all data but a reduced number of them.
+        - sample_interval: the number of samples for which only 1 is plotted.
+
+    Return:
+        A PNG file with an image of the plot-points of the preprocessed data.    
+    '''
+    #Convert x_values and y_values to numpy arrays
+    x_values = x_values.clone().detach().cpu().numpy()
+    y_values = y_values.clone().detach().cpu().numpy()
+    
+    #Print
+    if reduce_number_data == '1':
+        #Consider every sample_interval sample
+        x_values = x_values[::sample_interval]
+        y_values = y_values[::sample_interval]
+    
+    #Figure
+    plt.figure(figsize=(8, 6))
+    plt.scatter(x_values, y_values, s=0.5, marker='o', label='Points')
+    plt.xlabel('Preprocessed Input')
+    plt.ylabel('Preprocessed Target')
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    #Save figure
+    plt.savefig(path)
+    #Show
+    plt.show()
