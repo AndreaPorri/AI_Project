@@ -25,6 +25,15 @@ This will help reduce the complexity of the problem while preserving the most im
 (create a compact representation of the data). So after that, in the main.py file the encoder part of this 
 pre-trained autoencoder will be extracted.
 
+
+
+
+EXECUTION EXAMPLE:
+    - Standard training:   python autoencoder.py --print_info='1'
+    
+
+MUST: First of all, you have to execute the this file and then proceed with the execution of the training part of the main.py !!! 
+
 '''
 #Import needed libraries, classes and functions
 import torch
