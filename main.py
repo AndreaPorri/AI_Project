@@ -535,12 +535,16 @@ if __name__ == "__main__":
                                     ######################################
                                         ### GMM GENERATION SAMPLES ###
                                     ######################################
-        if args.GMM_limit == 'limitate':
+        if args.GMM_limit == 'limitate': 
+            print('\n\nGMM generator with limitation mode is selected...')
+            sleep(4)
             ### GENERATE LIMITATE ARTIFICIAL INPUT ###
             #The new samples are limited to the range of the training input, between the minimum and maximum values of the training set input after the dimensional reduction.
             new_samples = generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples, torch.min(data_X_train), torch.max(data_X_train))
         
         if args.GMM_limit == 'not_limitate':
+            print('\n\nGMM generator with no limitation mode is selected...')
+            sleep(4)
             ### GENERATE ARTIFICIAL INPUT ###
             new_samples = generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples)
         
