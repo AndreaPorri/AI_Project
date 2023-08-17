@@ -48,7 +48,7 @@ import torch
 
 ### GMM GENERATOR ###
 def generate_gaussian_mixture_samples(mixing_parameters, means, std_deviations, n_samples, min_val=None, max_val=None):
-    #Lista samples
+    #Samples list
     samples = []
     
     #Loop for generating samples

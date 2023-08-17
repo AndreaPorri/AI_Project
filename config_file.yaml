@@ -69,15 +69,15 @@ split_path:
                                 #       HYPERPARAMETERS:
                                 #################################
 epochs_net: #Epochs
-    400
+    8000
 learning_rate_net: #Learning rate
-    0.01
+    0.05
 mini_batch_size_net: #Mini-batch dimension
-    128
+    256
 loss_function_net: #Mean Square Error("mse") or Mean Absolute Error("mae")
     "mse"
 optimizer_net: #Adam("adam") or Stochastic Gradient Descent("sgd") or Root Mean Square Propagation("rmsprop")
-    "rmsprop"
+    "sgd"
 
                                 #################################
                                 #              MLP
@@ -87,7 +87,7 @@ input_size_mlp: #Dimension of the input layer
 output_size_mlp: #Dimension of the output layer
     1
 hidden_layers_mlp: #Dimensions list of the hidden layer (the dimensions go from the first element of the list, which corresponds to the first hidden layer, to the last, which corresponds to the last hidden layer)
-    [4, 2]
+    [10]
 
 
                                 #################################

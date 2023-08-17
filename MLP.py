@@ -89,7 +89,7 @@ class MLP(nn.Module):
     Returns:
         The class to define structure of the MLP and useful methods.
     """
-    def __init__(self, input_size, output_size, hidden_sizes): #Architecture definition
+    def __init__(self, input_size:int, output_size:int, hidden_sizes:list): #Architecture definition
         super(MLP, self).__init__()
 
         #Hidden layer list
@@ -461,10 +461,10 @@ class Net_training(torch.nn.Module):
         plot_box([target_v, output_v],['Target', 'Output'],'Boxplot target and output validation set pdf','y data','Pdf values',f'{results_path}/NET/boxplot_validation_pdy.png') 
         
         ### PLOT PDY ###
-        ### PLOT PDY TEST SET ###
+        ### PLOT PDY TRAINING SET ###
         plot_pdf(y_train, outputs_train_tensor, 'Target training set', 'Output training set', 'Comparison target and output training set', f'{results_path}/NET/training_pdy.png')
-        ### PLOT PDY TEST SET ###
-        plot_pdf(y_val, output_val_tensor, 'Target validation set', 'Output validation set', 'Comparison target and output validation set', f'{results_path}/NET/training_pdy.png')
+        ### PLOT PDY VALIDATION SET ###
+        plot_pdf(y_val, output_val_tensor, 'Target validation set', 'Output validation set', 'Comparison target and output validation set', f'{results_path}/NET/validation_pdy.png')
 
         
         return net_train_losses,net_val_losses
